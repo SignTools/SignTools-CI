@@ -36,6 +36,7 @@ jobs:
           curl -s -L -H "Authorization: Bearer $SECRET_KEY" "$SECRET_URL/$DOWNLOAD_SUFFIX" --output file.ipa
 
           echo "Creating keychain..."
+          fastlane run opt_out_usage
           fastlane run create_keychain name:"sign" password:"1234" default_keychain:true unlock:true
           echo "Importing certificate..."
           fastlane run import_certificate keychain_name:"sign" keychain_password:"1234" certificate_path:"cert.p12" certificate_password:"$SECRET_CERT_PASS"
