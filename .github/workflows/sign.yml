@@ -1,0 +1,47 @@
+name: CI
+
+on:
+  workflow_dispatch:
+    inputs:
+      download_suffix:
+        description: "Download suffix"
+        required: true
+      upload_suffix:
+        description: "Upload suffix"
+        required: true
+      cert_suffix:
+        description: "Certificate suffix"
+        required: true
+      prov_suffix:
+        description: "Provisioning profile suffix"
+        required: true
+
+jobs:
+  sign:
+    runs-on: macos-latest
+    env:
+      DOWNLOAD_SUFFIX: "${{ github.event.inputs.download_suffix }}"
+      UPLOAD_SUFFIX: "${{ github.event.inputs.upload_suffix }}"
+      CERT_SUFFIX: "${{ github.event.inputs.cert_suffix }}"
+      PROV_SUFFIX: "${{ github.event.inputs.prov_suffix }}"
+      SECRET_URL: "${{ secrets.URL }}"
+      SECRET_KEY: "${{ secrets.KEY }}"
+      SECRET_CERT_PASS: "${{ secrets.CERT_PASS }}"
+    steps:
+      - name: Sign
+        run: |
+          echo "Obtaining files..."
+          curl -s -L -H "Authorization: Bearer $SECRET_KEY" "$SECRET_URL/$CERT_SUFFIX" --output cert.p12
+          curl -s -L -H "Authorization: Bearer $SECRET_KEY" "$SECRET_URL/$PROV_SUFFIX" --output prov.mobileprovision
+          curl -s -L -H "Authorization: Bearer $SECRET_KEY" "$SECRET_URL/$DOWNLOAD_SUFFIX" --output file.ipa
+
+          echo "Creating keychain..."
+          fastlane run create_keychain name:"sign" password:"1234" default_keychain:true unlock:true
+          echo "Importing certificate..."
+          fastlane run import_certificate keychain_name:"sign" keychain_password:"1234" certificate_path:"cert.p12" certificate_password:"$SECRET_CERT_PASS"
+          IDENTITY=$(security find-identity -p appleID -v |  grep -o '".*"' | cut -d '"' -f 2)
+          echo "Signing..."
+          fastlane sigh resign file.ipa -i "$IDENTITY" -p "prov.mobileprovision" > /dev/null 2>&1
+
+          echo "Uploading..."
+          curl -s -H "Authorization: Bearer $SECRET_KEY" -F "file=@file.ipa" "$SECRET_URL/$UPLOAD_SUFFIX"
