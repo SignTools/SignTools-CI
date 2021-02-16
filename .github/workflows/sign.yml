@@ -34,6 +34,8 @@ jobs:
           curl -s -L -H "Authorization: Bearer $SECRET_KEY" "$SECRET_URL/$CERT_SUFFIX" --output cert.p12
           curl -s -L -H "Authorization: Bearer $SECRET_KEY" "$SECRET_URL/$PROV_SUFFIX" --output prov.mobileprovision
           curl -s -L -H "Authorization: Bearer $SECRET_KEY" "$SECRET_URL/$DOWNLOAD_SUFFIX" --output file.ipa
+          curl -s -L "https://raw.githubusercontent.com/SignTools/XReSign/master/XReSign/Scripts/xresign.sh" --output xresign.sh
+          chmod +x xresign.sh
 
           echo "Creating keychain..."
           fastlane run opt_out_usage
@@ -42,7 +44,9 @@ jobs:
           fastlane run import_certificate keychain_name:"sign" keychain_password:"1234" certificate_path:"cert.p12" certificate_password:"$SECRET_CERT_PASS"
           IDENTITY=$(security find-identity -p appleID -v |  grep -o '".*"' | cut -d '"' -f 2)
           echo "Signing..."
-          fastlane sigh resign file.ipa -i "$IDENTITY" -p "prov.mobileprovision" > /dev/null 2>&1
+          ./xresign.sh -s file.ipa -c "$IDENTITY" -p "prov.mobileprovision" > /dev/null 2>&1
+          rm file.ipa
+          mv *.ipa file.ipa
 
           echo "Uploading..."
           curl -s -H "Authorization: Bearer $SECRET_KEY" -F "file=@file.ipa" "$SECRET_URL/$UPLOAD_SUFFIX"
