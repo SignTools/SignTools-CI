@@ -15,6 +15,9 @@ on:
       prov_suffix:
         description: "Provisioning profile suffix"
         required: true
+      pass_suffix:
+        description: "Certificate password suffix"
+        required: true
 
 jobs:
   sign:
@@ -24,9 +27,9 @@ jobs:
       UPLOAD_SUFFIX: "${{ github.event.inputs.upload_suffix }}"
       CERT_SUFFIX: "${{ github.event.inputs.cert_suffix }}"
       PROV_SUFFIX: "${{ github.event.inputs.prov_suffix }}"
+      PASS_SUFFIX: "${{ github.event.inputs.pass_suffix }}"
       SECRET_URL: "${{ secrets.URL }}"
       SECRET_KEY: "${{ secrets.KEY }}"
-      SECRET_CERT_PASS: "${{ secrets.CERT_PASS }}"
     steps:
       - name: Sign
         run: |
@@ -36,6 +39,7 @@ jobs:
           curl -s -L -H "Authorization: Bearer $SECRET_KEY" "$SECRET_URL/$CERT_SUFFIX" --output cert.p12
           curl -s -L -H "Authorization: Bearer $SECRET_KEY" "$SECRET_URL/$PROV_SUFFIX" --output prov.mobileprovision
           curl -s -L -H "Authorization: Bearer $SECRET_KEY" "$SECRET_URL/$DOWNLOAD_SUFFIX" --output file.ipa
+          CERT_PASS=$(curl -s -L -H "Authorization: Bearer $SECRET_KEY" "$SECRET_URL/$PASS_SUFFIX")
           curl -s -L "https://raw.githubusercontent.com/SignTools/XReSign/master/XReSign/Scripts/xresign.sh" --output xresign.sh
           chmod +x xresign.sh
 
@@ -45,7 +49,7 @@ jobs:
           security default-keychain -s "sign"
 
           echo "Importing certificate..."
-          security import "cert.p12" -P "$SECRET_CERT_PASS" -A
+          security import "cert.p12" -P "$CERT_PASS" -A
           security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "1234" > /dev/null 2>&1
           IDENTITY=$(security find-identity -p appleID -v |  grep -o '".*"' | cut -d '"' -f 2)
 
