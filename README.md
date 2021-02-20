@@ -10,6 +10,5 @@ Fork this repo. Add the following [secrets](https://docs.github.com/en/actions/r
 | Secret    | Description                                   | Example                  |
 | --------- | --------------------------------------------- | ------------------------ |
 | URL       | Your iOS Signer Service's base URL            | https://website.com      |
-| KEY       | The key configured in your iOS Signer Service | MY_SUPER_LONG_SECRET_KEY |
 
 That is all. Make sure you set the correct repository owner and name in your `ios-signer-service` configuration.

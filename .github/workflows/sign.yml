@@ -36,10 +36,10 @@ jobs:
           set -e
 
           echo "Obtaining files..."
-          curl -s -L -H "Authorization: Bearer $SECRET_KEY" "$SECRET_URL/$CERT_SUFFIX" --output cert.p12
-          curl -s -L -H "Authorization: Bearer $SECRET_KEY" "$SECRET_URL/$PROV_SUFFIX" --output prov.mobileprovision
-          curl -s -L -H "Authorization: Bearer $SECRET_KEY" "$SECRET_URL/$DOWNLOAD_SUFFIX" --output file.ipa
-          CERT_PASS=$(curl -s -L -H "Authorization: Bearer $SECRET_KEY" "$SECRET_URL/$PASS_SUFFIX")
+          curl -s -L "$SECRET_URL/$CERT_SUFFIX" --output cert.p12
+          curl -s -L "$SECRET_URL/$PROV_SUFFIX" --output prov.mobileprovision
+          curl -s -L "$SECRET_URL/$DOWNLOAD_SUFFIX" --output file.ipa
+          CERT_PASS=$(curl -s -L "$SECRET_URL/$PASS_SUFFIX")
           curl -s -L "https://raw.githubusercontent.com/SignTools/XReSign/master/XReSign/Scripts/xresign.sh" --output xresign.sh
           chmod +x xresign.sh
 
@@ -59,4 +59,4 @@ jobs:
           mv *.ipa file.ipa
 
           echo "Uploading..."
-          curl -s -H "Authorization: Bearer $SECRET_KEY" -F "file=@file.ipa" "$SECRET_URL/$UPLOAD_SUFFIX"
+          curl -s -F "file=@file.ipa" "$SECRET_URL/$UPLOAD_SUFFIX"
