@@ -18,6 +18,9 @@ on:
       pass_suffix:
         description: "Certificate password suffix"
         required: true
+      sign_args:
+        description: "Signing arguments"
+        required: true
 
 jobs:
   sign:
@@ -28,6 +31,7 @@ jobs:
       CERT_SUFFIX: "${{ github.event.inputs.cert_suffix }}"
       PROV_SUFFIX: "${{ github.event.inputs.prov_suffix }}"
       PASS_SUFFIX: "${{ github.event.inputs.pass_suffix }}"
+      SIGN_ARGS: "${{ github.event.inputs.sign_args }}"
       SECRET_URL: "${{ secrets.URL }}"
       SECRET_KEY: "${{ secrets.KEY }}"
     steps:
@@ -54,7 +58,7 @@ jobs:
           IDENTITY=$(security find-identity -p appleID -v |  grep -o '".*"' | cut -d '"' -f 2)
 
           echo "Signing..."
-          ./xresign.sh -s file.ipa -c "$IDENTITY" -p "prov.mobileprovision" > /dev/null 2>&1
+          ./xresign.sh -i file.ipa -c "$IDENTITY" -p "prov.mobileprovision" $SIGN_ARGS > /dev/null 2>&1
           rm file.ipa
           mv *.ipa file.ipa
 
