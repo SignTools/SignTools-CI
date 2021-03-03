@@ -2,11 +2,11 @@
 set -e
 
 echo "Obtaining files..."
-curl -s -L -H "Authorization: Bearer $SECRET_KEY" "$SECRET_URL/jobs" | tar -x
+curl -sS -L -H "Authorization: Bearer $SECRET_KEY" "$SECRET_URL/jobs" | tar -x
 CERT_PASS=$(cat pass.txt)
 SIGN_ARGS=$(cat args.txt)
 UPLOAD_ID=$(cat id.txt)
-curl -s -L "https://raw.githubusercontent.com/SignTools/XReSign/master/XReSign/Scripts/xresign.sh" --output xresign.sh
+curl -sS -L "https://raw.githubusercontent.com/SignTools/XReSign/master/XReSign/Scripts/xresign.sh" --output xresign.sh
 chmod +x xresign.sh
 
 echo "Creating keychain..."
@@ -25,4 +25,4 @@ rm unsigned.ipa
 mv *.ipa file.ipa
 
 echo "Uploading..."
-curl -s -H "Authorization: Bearer $SECRET_KEY" -F "file=@file.ipa" "$SECRET_URL/jobs/$UPLOAD_ID"
+curl -sS -H "Authorization: Bearer $SECRET_KEY" -F "file=@file.ipa" "$SECRET_URL/jobs/$UPLOAD_ID"
