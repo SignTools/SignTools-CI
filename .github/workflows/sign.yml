@@ -7,8 +7,8 @@ jobs:
   sign:
     runs-on: macos-latest
     env:
-      SECRET_URL: "${{ secrets.URL }}"
-      SECRET_KEY: "${{ secrets.KEY }}"
+      SECRET_URL: "${{ secrets.SECRET_URL }}"
+      SECRET_KEY: "${{ secrets.SECRET_KEY }}"
     steps:
       - name: Sign
         run: |
