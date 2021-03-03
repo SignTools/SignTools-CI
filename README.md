@@ -1,15 +1,19 @@
 # iOS Signer CI
 
-This a free and easy builder implementation for [ios-signer-service](https://github.com/SignTools/ios-signer-service).
-Using GitHub's Actions macOS [environment](https://docs.github.com/en/actions/reference/specifications-for-github-hosted-runners), this repository will pull, sign, and upload any iOS apps to the `ios-signer-service` that requested them.
+This a free and simple builder implementation for [ios-signer-service](https://github.com/SignTools/ios-signer-service). It uses a Continous Integration (CI) service to pull, sign, and upload any iOS apps to the `ios-signer-service` that requested them.
+
+Configuration for the following providers is included:
+
+- GitHub Actions - [sign.yml](.github/workflows/sign.yml)
+- Semaphore CI - [semaphore.yml](.semaphore/semaphore.yml)
 
 ## Setup
 
-Fork this repo. Add the following [secrets](https://docs.github.com/en/actions/reference/encrypted-secrets) to your fork:
+Fork this repo. If using a CI other than GitHub, set up the CI with the forked repo. Then, add the following secrets to your CI:
 
-| Secret | Description                                            | Example                  |
-| ------ | ------------------------------------------------------ | ------------------------ |
-| URL    | Your iOS Signer Service's base URL                     | https://website.com      |
-| KEY    | The workflow key configured in your iOS Signer Service | MY_SUPER_LONG_SECRET_KEY |
+| Secret     | Description                                            | Example                  |
+| ---------- | ------------------------------------------------------ | ------------------------ |
+| SECRET_URL | Your iOS Signer Service's base URL                     | https://website.com      |
+| SECRET_KEY | The workflow key configured in your iOS Signer Service | MY_SUPER_LONG_SECRET_KEY |
 
 That is all. Make sure to set the correct workflow configuration in your `ios-signer-service` instance.
