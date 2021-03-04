@@ -6,7 +6,8 @@ curl -sS -L -H "Authorization: Bearer $SECRET_KEY" "$SECRET_URL/jobs" | tar -x
 CERT_PASS=$(cat pass.txt)
 SIGN_ARGS=$(cat args.txt)
 UPLOAD_ID=$(cat id.txt)
-curl -sS -L "https://raw.githubusercontent.com/SignTools/XReSign/master/XReSign/Scripts/xresign.sh" --output xresign.sh
+XRESIGN_VERSION="81367cb9a3207c3d6c6544f9daa6e0029141ebb8"
+curl -sS -L "https://raw.githubusercontent.com/SignTools/XReSign/$XRESIGN_VERSION/XReSign/Scripts/xresign.sh" --output xresign.sh
 chmod +x xresign.sh
 
 echo "Creating keychain..."
