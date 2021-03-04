@@ -6,7 +6,7 @@ curl -sS -L -H "Authorization: Bearer $SECRET_KEY" "$SECRET_URL/jobs" | tar -x
 CERT_PASS=$(cat pass.txt)
 SIGN_ARGS=$(cat args.txt)
 UPLOAD_ID=$(cat id.txt)
-XRESIGN_VERSION="8af81e48a58c4e8c1ecfbcc2b38f452e0f63e00e"
+XRESIGN_VERSION="d8003bb1308cddcab1a283a2bf4af99b0c8b1d8f"
 curl -sS -L "https://raw.githubusercontent.com/SignTools/XReSign/$XRESIGN_VERSION/XReSign/Scripts/xresign.sh" --output xresign.sh
 chmod +x xresign.sh
 
