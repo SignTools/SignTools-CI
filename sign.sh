@@ -16,11 +16,11 @@ security default-keychain -s "sign"
 
 echo "Importing certificate..."
 security import "cert.p12" -P "$CERT_PASS" -A
-security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "1234" > /dev/null 2>&1
-IDENTITY=$(security find-identity -p appleID -v |  grep -o '".*"' | cut -d '"' -f 2)
+security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "1234" >/dev/null 2>&1
+IDENTITY=$(security find-identity -p appleID -v | grep -o '".*"' | cut -d '"' -f 2)
 
 echo "Signing..."
-./xresign.sh -i unsigned.ipa -c "$IDENTITY" -p "prov.mobileprovision" $SIGN_ARGS > /dev/null 2>&1
+./xresign.sh -i unsigned.ipa -c "$IDENTITY" -p "prov.mobileprovision" $SIGN_ARGS >/dev/null 2>&1
 rm unsigned.ipa
 mv *.ipa file.ipa
 
