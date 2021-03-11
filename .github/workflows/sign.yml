@@ -6,6 +6,7 @@ on:
 jobs:
   sign:
     runs-on: macos-latest
+    timeout-minutes: 10
     env:
       SECRET_URL: "${{ secrets.SECRET_URL }}"
       SECRET_KEY: "${{ secrets.SECRET_KEY }}"
