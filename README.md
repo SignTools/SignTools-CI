@@ -7,6 +7,8 @@ The following providers are supported:
 - [GitHub Actions](https://docs.github.com/en/actions)
 - [Semaphore CI](https://semaphoreci.com/)
 
+> ### Note :warning:: Developer accounts are only supported on GitHub Actions for now!
+
 ## Setup
 
 1. Create a GitHub account
@@ -20,7 +22,7 @@ Alternatively, you can also manually clone this repo into a new private reposito
 
 1. Open your GitHub account settings
 2. Go to `Developer settings` and then `Personal access tokens`
-3. Create a new token with all permissions
+3. Create a new token with the `workflow` permission
 
 This is the token you need for your `ios-signer-service`'s builder configuration.
 
