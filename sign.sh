@@ -7,7 +7,7 @@ CERT_PASS=$(cat cert_pass.txt)
 SIGN_ARGS=$(cat args.txt)
 JOB_ID=$(cat id.txt)
 USER_BUNDLE_ID=$(cat user_bundle_id.txt)
-XRESIGN_VERSION="d8003bb1308cddcab1a283a2bf4af99b0c8b1d8f"
+XRESIGN_VERSION="10dbcaefd68084d459bd392351ff2ce4934dabd3"
 curl -sS -L "https://raw.githubusercontent.com/SignTools/XReSign/$XRESIGN_VERSION/XReSign/Scripts/xresign.sh" -o xresign.sh
 chmod +x xresign.sh
 
@@ -91,9 +91,9 @@ if [ ! -f "prov.mobileprovision" ]; then
 fi
 
 echo "Signing..."
-./xresign.sh -i unsigned.ipa -c "$IDENTITY" -p "prov.mobileprovision" $SIGN_ARGS >/dev/null 2>&1
+./xresign.sh -i unsigned.ipa -c "$IDENTITY" -p "prov.mobileprovision" -w bundle_id.txt $SIGN_ARGS >/dev/null 2>&1
 rm unsigned.ipa
 mv *.ipa file.ipa
 
 echo "Uploading..."
-curl -sS -H "Authorization: Bearer $SECRET_KEY" -F "file=@file.ipa" "$SECRET_URL/jobs/$JOB_ID/signed"
+curl -sS -H "Authorization: Bearer $SECRET_KEY" -F "file=@file.ipa" -F "bundle_id=$(cat bundle_id.txt)" "$SECRET_URL/jobs/$JOB_ID/signed"
