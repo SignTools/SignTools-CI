@@ -9,7 +9,7 @@ The following providers are supported:
 
 You only need to configure one provider.
 
-> ### Note :warning:: Developer accounts are only supported on GitHub Actions for now!
+> ### :warning: Developer accounts are only supported on GitHub Actions for now!
 
 ## Setup
 
