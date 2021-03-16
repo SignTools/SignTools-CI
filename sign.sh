@@ -2,13 +2,13 @@
 set -e
 
 echo "Obtaining files..."
-curl -sS -L -H "Authorization: Bearer $SECRET_KEY" "$SECRET_URL/jobs" | tar -x
+curl -sfSL -H "Authorization: Bearer $SECRET_KEY" "$SECRET_URL/jobs" | tar -x
 CERT_PASS=$(cat cert_pass.txt)
 SIGN_ARGS=$(cat args.txt)
 JOB_ID=$(cat id.txt)
 USER_BUNDLE_ID=$(cat user_bundle_id.txt)
 XRESIGN_VERSION="10dbcaefd68084d459bd392351ff2ce4934dabd3"
-curl -sS -L "https://raw.githubusercontent.com/SignTools/XReSign/$XRESIGN_VERSION/XReSign/Scripts/xresign.sh" -o xresign.sh
+curl -sfSL "https://raw.githubusercontent.com/SignTools/XReSign/$XRESIGN_VERSION/XReSign/Scripts/xresign.sh" -o xresign.sh
 chmod +x xresign.sh
 
 echo "Creating keychain..."
@@ -47,7 +47,7 @@ if [ ! -f "prov.mobileprovision" ]; then
             echo "Operation timed out"
             exit 1
         fi
-        curl -sL --fail -H "Authorization: Bearer $SECRET_KEY" "$SECRET_URL/jobs/$JOB_ID/2fa" -o account_2fa.txt && ret=$? || ret=$?
+        curl -sfSL -H "Authorization: Bearer $SECRET_KEY" "$SECRET_URL/jobs/$JOB_ID/2fa" -o account_2fa.txt && ret=$? || ret=$?
         sleep 1
         ((i++))
     done
@@ -96,4 +96,4 @@ rm unsigned.ipa
 mv *.ipa file.ipa
 
 echo "Uploading..."
-curl -sS -H "Authorization: Bearer $SECRET_KEY" -F "file=@file.ipa" -F "bundle_id=$(cat bundle_id.txt)" "$SECRET_URL/jobs/$JOB_ID/signed"
+curl -sfSL -H "Authorization: Bearer $SECRET_KEY" -F "file=@file.ipa" -F "bundle_id=$(cat bundle_id.txt)" "$SECRET_URL/jobs/$JOB_ID/signed"
