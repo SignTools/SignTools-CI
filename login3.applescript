@@ -4,5 +4,3 @@ tell application "System Events" to tell process "Xcode"
 		delay 0.1
 	end repeat
 end tell
-
-tell application "Xcode" to quit

@@ -12,9 +12,16 @@ curl -sfSL "https://raw.githubusercontent.com/SignTools/XReSign/$XRESIGN_VERSION
 chmod +x xresign.sh
 
 echo "Creating keychain..."
-security create-keychain -p "1234" "sign"
-security unlock-keychain -p "1234" "sign"
-security default-keychain -s "sign"
+OLD_KEYCHAIN=$(security default-keychain | cut -d '"' -f 2)
+function cleanup() {
+    set +e
+    security default-keychain -s "$OLD_KEYCHAIN"
+    security delete-keychain "ios-signer"
+}
+trap cleanup SIGINT SIGTERM EXIT
+security create-keychain -p "1234" "ios-signer"
+security unlock-keychain -p "1234" "ios-signer"
+security default-keychain -s "ios-signer"
 
 echo "Importing certificate..."
 security import "cert.p12" -P "$CERT_PASS" -A
@@ -31,6 +38,9 @@ if [ ! -f "prov.mobileprovision" ]; then
         exit 1
     fi
 
+    killall Xcode || true
+    rm "$HOME/Library/MobileDevice/Provisioning Profiles/"* || true
+
     echo "Logging in..."
     echo >dummy.developerprofile
     # force Xcode to open the Accounts screen
@@ -46,6 +56,7 @@ if [ ! -f "prov.mobileprovision" ]; then
     osascript login3.applescript
     # stop polling for 2fa code if account was added
     kill %1 || true
+    killall Xcode
 
     echo "Parsing certificate..."
     CERT_INFO=$(openssl pkcs12 -in cert.p12 -passin pass:"$CERT_PASS" -nokeys | openssl x509 -noout -subject)
@@ -78,7 +89,8 @@ if [ ! -f "prov.mobileprovision" ]; then
         ((i++))
     done
 
-    cp "$HOME/Library/MobileDevice/Provisioning Profiles/"* "prov.mobileprovision"
+    killall Xcode
+    mv "$HOME/Library/MobileDevice/Provisioning Profiles/"* "prov.mobileprovision"
 fi
 
 echo "Signing..."
