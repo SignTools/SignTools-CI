@@ -9,7 +9,7 @@ while [ $ret -ne 0 ]; do
         echo "Operation timed out"
         exit 1
     fi
-    curl -sfSL -H "Authorization: Bearer $SECRET_KEY" "$SECRET_URL/jobs/$JOB_ID/2fa" -o account_2fa.txt && ret=$? || ret=$?
+    curl -sfL -H "Authorization: Bearer $SECRET_KEY" "$SECRET_URL/jobs/$JOB_ID/2fa" -o account_2fa.txt && ret=$? || ret=$?
     sleep 1
     ((i++))
 done
