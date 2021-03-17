@@ -38,8 +38,8 @@ if [ ! -f "prov.mobileprovision" ]; then
         exit 1
     fi
 
-    killall Xcode || true
-    rm "$HOME/Library/MobileDevice/Provisioning Profiles/"* || true
+    killall Xcode >/dev/null 2>&1 || true
+    rm "$HOME/Library/MobileDevice/Provisioning Profiles/"* >/dev/null 2>&1 || true
 
     echo "Logging in..."
     echo >dummy.developerprofile
@@ -55,7 +55,7 @@ if [ ! -f "prov.mobileprovision" ]; then
     # wait for account to be added
     osascript login3.applescript
     # stop polling for 2fa code if account was added
-    kill %1 || true
+    kill %1 >/dev/null 2>&1 || true
     killall Xcode
 
     echo "Parsing certificate..."
