@@ -12,21 +12,24 @@ curl -sfSL "https://raw.githubusercontent.com/SignTools/XReSign/$XRESIGN_VERSION
 chmod +x xresign.sh
 
 echo "Creating keychain..."
-OLD_KEYCHAIN=$(security default-keychain | cut -d '"' -f 2)
+DEFAULT_KEYCHAIN=$(security default-keychain)
+USER_KEYCHAINS=$(security list-keychains -d user | tr -d '\n')
 function cleanup() {
     set +e
-    security default-keychain -s "$OLD_KEYCHAIN"
+    eval security list-keychain -d user -s $USER_KEYCHAINS
+    eval security default-keychain -s $DEFAULT_KEYCHAIN
     security delete-keychain "ios-signer"
 }
 trap cleanup SIGINT SIGTERM EXIT
 security create-keychain -p "1234" "ios-signer"
 security unlock-keychain -p "1234" "ios-signer"
 security default-keychain -s "ios-signer"
+security list-keychains -d user -s "ios-signer"
 
 echo "Importing certificate..."
 security import "cert.p12" -P "$CERT_PASS" -A
 security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "1234" >/dev/null 2>&1
-IDENTITY=$(security find-identity -p appleID -v | grep -o '".*"' | cut -d '"' -f 2)
+IDENTITY=$(security find-identity -p appleID -v | head -n 1 | grep -o '".*"' | cut -d '"' -f 2)
 
 if [ ! -f "prov.mobileprovision" ]; then
     if [ ! -f "account_name.txt" ] || [ ! -f "account_pass.txt" ]; then
