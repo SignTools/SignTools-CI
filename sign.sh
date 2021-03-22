@@ -1,14 +1,15 @@
 #!/bin/bash
 set -e
+CURL="curl -sfSL --http1.1"
 
 echo "Obtaining files..."
-curl -sfSL -H "Authorization: Bearer $SECRET_KEY" "$SECRET_URL/jobs" | tar -x
+$CURL -H "Authorization: Bearer $SECRET_KEY" "$SECRET_URL/jobs" | tar -x
 CERT_PASS=$(cat cert_pass.txt)
 SIGN_ARGS=$(cat args.txt)
 JOB_ID=$(cat id.txt)
 USER_BUNDLE_ID=$(cat user_bundle_id.txt)
 XRESIGN_VERSION="83e30ed5b148f52c26e08e88b29660c8cb56d07a"
-curl -sfSL "https://raw.githubusercontent.com/SignTools/XReSign/$XRESIGN_VERSION/XReSign/Scripts/xresign.sh" -o xresign.sh
+$CURL "https://raw.githubusercontent.com/SignTools/XReSign/$XRESIGN_VERSION/XReSign/Scripts/xresign.sh" -o xresign.sh
 chmod +x xresign.sh
 
 echo "Creating keychain..."
@@ -102,4 +103,4 @@ rm unsigned.ipa
 mv *.ipa file.ipa
 
 echo "Uploading..."
-curl -sfSL -H "Authorization: Bearer $SECRET_KEY" -F "file=@file.ipa" -F "bundle_id=$(cat bundle_id.txt)" "$SECRET_URL/jobs/$JOB_ID/signed"
+$CURL -H "Authorization: Bearer $SECRET_KEY" -F "file=@file.ipa" -F "bundle_id=$(cat bundle_id.txt)" "$SECRET_URL/jobs/$JOB_ID/signed"
