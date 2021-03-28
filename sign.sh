@@ -1,15 +1,15 @@
 #!/bin/bash
 set -e
-CURL="curl -sfSL --http1.1"
+CURL="curl -sfL --http1.1"
 
 echo "Obtaining files..."
-$CURL -H "Authorization: Bearer $SECRET_KEY" "$SECRET_URL/jobs" | tar -x
+$CURL -S -H "Authorization: Bearer $SECRET_KEY" "$SECRET_URL/jobs" | tar -x
 CERT_PASS=$(cat cert_pass.txt)
 SIGN_ARGS=$(cat args.txt)
 JOB_ID=$(cat id.txt)
 USER_BUNDLE_ID=$(cat user_bundle_id.txt)
 XRESIGN_VERSION="83e30ed5b148f52c26e08e88b29660c8cb56d07a"
-$CURL "https://raw.githubusercontent.com/SignTools/XReSign/$XRESIGN_VERSION/XReSign/Scripts/xresign.sh" -o xresign.sh
+$CURL -S "https://raw.githubusercontent.com/SignTools/XReSign/$XRESIGN_VERSION/XReSign/Scripts/xresign.sh" -o xresign.sh
 chmod +x xresign.sh
 
 echo "Creating keychain..."
@@ -45,7 +45,7 @@ if [ ! -f "prov.mobileprovision" ]; then
     killall Xcode >/dev/null 2>&1 || true
     rm "$HOME/Library/MobileDevice/Provisioning Profiles/"* >/dev/null 2>&1 || true
 
-    echo "Logging in..."
+    echo "Logging in (1/2)..."
     echo >dummy.developerprofile
     # force Xcode to open the Accounts screen
     open -a "/Applications/Xcode.app" dummy.developerprofile
@@ -53,13 +53,27 @@ if [ ! -f "prov.mobileprovision" ]; then
     export ACCOUNT_PASS=$(cat account_pass.txt)
     osascript login1.applescript
 
-    # poll for 2fa code and enter it
-    export JOB_ID
-    ./sign-2fa.sh &
-    # wait for account to be added
-    osascript login3.applescript
-    # stop polling for 2fa code if account was added
-    kill %1 >/dev/null 2>&1 || true
+    echo "Logging in (2/2)..."
+    i=0
+    ret=1
+    while true; do
+        if [ $i -gt 60 ]; then
+            echo "Operation timed out"
+            exit 1
+        fi
+        if osascript login3.applescript >/dev/null 2>&1; then
+            echo "Logged in!"
+            break
+        elif [ $ret -ne 0 ]; then
+            $CURL -H "Authorization: Bearer $SECRET_KEY" "$SECRET_URL/jobs/$JOB_ID/2fa" -o account_2fa.txt && ret=0 || continue
+            echo "Entering 2FA code..."
+            export ACCOUNT_2FA="$(cat account_2fa.txt)"
+            osascript login2.applescript
+        fi
+        sleep 1
+        ((i++))
+    done
+
     killall Xcode
 
     echo "Parsing certificate..."
@@ -103,4 +117,4 @@ rm unsigned.ipa
 mv *.ipa file.ipa
 
 echo "Uploading..."
-$CURL -H "Authorization: Bearer $SECRET_KEY" -F "file=@file.ipa" -F "bundle_id=$(cat bundle_id.txt)" "$SECRET_URL/jobs/$JOB_ID/signed"
+$CURL -S -H "Authorization: Bearer $SECRET_KEY" -F "file=@file.ipa" -F "bundle_id=$(cat bundle_id.txt)" "$SECRET_URL/jobs/$JOB_ID/signed"
