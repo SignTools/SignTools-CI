@@ -42,11 +42,3 @@ This is the token you need for your `ios-signer-service`'s builder configuration
 8. At the bottom of the page that opens, set `What to build` to `Do not build this project (Pause project)`
 
 At your SemaphoreCI profile settings, you will find your `API Token`. This is the token you need for your `ios-signer-service`'s builder configuration.
-
-To get the project id, go to your project's page in SemaphoreCI and click `Project artifacts`. When the new page loads, look at the URL in your browser. It will be similar to this:
-
-```
-https://YOUR_ORG_NAME.semaphoreci.com/artifacts/projects/0c4071ec-a35f-4145-a5f9-08d25483c222
-```
-
-The id after the last forward slash is your project id.
