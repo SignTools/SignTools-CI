@@ -54,6 +54,7 @@ if [ ! -f "prov.mobileprovision" ]; then
     osascript login1.applescript
 
     echo "Logging in (2/2)..."
+    echo "If you receive a two-factor authentication (2FA) code, please submit it to the web service."
     i=0
     ret=1
     while true; do
