@@ -1,6 +1,6 @@
 #!/bin/bash
 set -e
-CURL="curl -sfL --http1.1"
+CURL="curl -sfL"
 
 echo "Obtaining files..."
 $CURL -S -H "Authorization: Bearer $SECRET_KEY" "$SECRET_URL/jobs" | tar -x
