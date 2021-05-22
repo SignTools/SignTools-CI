@@ -8,9 +8,6 @@ CERT_PASS=$(cat cert_pass.txt)
 SIGN_ARGS=$(cat args.txt)
 JOB_ID=$(cat id.txt)
 USER_BUNDLE_ID=$(cat user_bundle_id.txt)
-XRESIGN_VERSION="83e30ed5b148f52c26e08e88b29660c8cb56d07a"
-$CURL -S "https://raw.githubusercontent.com/SignTools/XReSign/$XRESIGN_VERSION/XReSign/Scripts/xresign.sh" -o xresign.sh
-chmod +x xresign.sh
 
 echo "Creating keychain..."
 DEFAULT_KEYCHAIN=$(security default-keychain)
