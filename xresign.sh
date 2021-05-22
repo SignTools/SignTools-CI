@@ -74,7 +74,7 @@ APPDIR="$TMPDIR/app"
 mkdir -p "$APPDIR"
 if command -v 7z &>/dev/null; then
     echo "Extracting app using 7zip"
-    7z x "$SOURCEIPA" -o"$APPDIR" >/dev/null 2>&1
+    7z x "$SOURCEIPA" -o"$APPDIR" >/dev/null
 else
     echo "Extracting app using unzip"
     unzip -qo "$SOURCEIPA" -d "$APPDIR"

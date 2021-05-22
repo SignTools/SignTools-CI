@@ -26,7 +26,7 @@ security list-keychains -d user -s "ios-signer"
 
 echo "Importing certificate..."
 security import "cert.p12" -P "$CERT_PASS" -A
-security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "1234" >/dev/null 2>&1
+security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "1234" >/dev/null
 IDENTITY=$(security find-identity -p appleID -v | head -n 1 | grep -o '".*"' | cut -d '"' -f 2)
 
 if [ ! -f "prov.mobileprovision" ]; then
@@ -110,7 +110,7 @@ if [ ! -f "prov.mobileprovision" ]; then
 fi
 
 echo "Signing..."
-./xresign.sh -i unsigned.ipa -c "$IDENTITY" -p "prov.mobileprovision" -w bundle_id.txt $SIGN_ARGS >/dev/null 2>&1
+./xresign.sh -i unsigned.ipa -c "$IDENTITY" -p "prov.mobileprovision" -w bundle_id.txt $SIGN_ARGS
 rm unsigned.ipa
 mv *.ipa file.ipa
 
