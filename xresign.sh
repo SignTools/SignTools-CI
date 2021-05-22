@@ -111,7 +111,7 @@ TEAM_ID=$(/usr/libexec/PlistBuddy -c 'Print com.apple.developer.team-identifier'
 
 if [[ -n "$ALIGN_APP_ID" ]]; then
     if [[ "$APP_ID" == "$TEAM_ID.*" ]]; then
-        echo "WARNING: Not setting bundle id to provisioning profile's app id because the latter is wildcard"
+        echo "WARNING: Not setting bundle id to provisioning profile's app id because the latter is wildcard" >&2
         # Otherwise bundle id would be "*", and while that happens to work, it is invalid and could
         # break in a future iOS update
     else
@@ -160,8 +160,8 @@ while IFS='' read -r line || [[ -n "$line" ]]; do
             echo "Setting entitlements app ID to $TEAM_ID.$EXTRA_ID"
             /usr/libexec/PlistBuddy -c "Set :application-identifier $TEAM_ID.$EXTRA_ID" "$TMPDIR/entitlements$var.plist"
         else
-            echo "WARNING: Provisioning profile's app ID $APP_ID doesn't match component's bundle ID $TEAM_ID.$EXTRA_ID."
-            echo "Leaving original entitlements - the app will run, but all entitlements will be broken!"
+            echo "WARNING: Provisioning profile's app ID $APP_ID doesn't match component's bundle ID $TEAM_ID.$EXTRA_ID." >&2
+            echo "Leaving original entitlements - the app will run, but all entitlements will be broken!" >&2
         fi
 
         if [ -n "$BUNDLEID_SAVE_FILE" ] && [[ "$line" == *".app" ]]; then

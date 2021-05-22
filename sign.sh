@@ -31,11 +31,11 @@ IDENTITY=$(security find-identity -p appleID -v | head -n 1 | grep -o '".*"' | c
 
 if [ ! -f "prov.mobileprovision" ]; then
     if [ ! -f "account_name.txt" ] || [ ! -f "account_pass.txt" ]; then
-        echo "No provisioning profile found and no account provided, aborting."
+        echo "No provisioning profile found and no account provided, aborting." >&2
         exit 1
     fi
     if [ -z "$USER_BUNDLE_ID" ]; then
-        echo "Account found but no app bundle id provided, aborting."
+        echo "Account found but no app bundle id provided, aborting." >&2
         exit 1
     fi
 
@@ -56,7 +56,7 @@ if [ ! -f "prov.mobileprovision" ]; then
     ret=1
     while true; do
         if [ $i -gt 60 ]; then
-            echo "Operation timed out"
+            echo "Operation timed out" >&2
             exit 1
         fi
         if osascript login3.applescript >/dev/null 2>&1; then
@@ -81,8 +81,8 @@ if [ ! -f "prov.mobileprovision" ]; then
     elif echo "$CERT_INFO" | grep '\/OU=.*\/' >/dev/null 2>&1; then
         TEAM_ID=$(echo "${CERT_INFO#*\/OU=}" | cut -d'/' -f1)
     else
-        echo "Unknown certificate dump format:"
-        echo "$CERT_INFO"
+        echo "Unknown certificate dump format:" >&2
+        echo "$CERT_INFO" >&2
         exit 1
     fi
     sed -i "" -e "s/BUNDLE_ID_HERE_V9KP12/$USER_BUNDLE_ID/g" SimpleApp/SimpleApp.xcodeproj/project.pbxproj
@@ -94,10 +94,10 @@ if [ ! -f "prov.mobileprovision" ]; then
     ret=1
     while [ $ret -ne 0 ]; do
         if [ $i -gt 15 ]; then
-            echo "Operation timed out. Possible reasons:"
-            echo "- You haven't registered your device's UDID with the developer account"
-            echo "- You used an invalid or already existing bundle id"
-            echo "- You exceeded the 10 app ids per 7 days limit on free accounts"
+            echo "Operation timed out. Possible reasons:" >&2
+            echo "- You haven't registered your device's UDID with the developer account" >&2
+            echo "- You used an invalid or already existing bundle id" >&2
+            echo "- You exceeded the 10 app ids per 7 days limit on free accounts" >&2
             exit 1
         fi
         ls "$HOME/Library/MobileDevice/Provisioning Profiles/"* >/dev/null 2>&1 && ret=$? || ret=$?
