@@ -8,26 +8,26 @@ CERT_PASS=$(cat cert_pass.txt)
 SIGN_ARGS=$(cat args.txt)
 JOB_ID=$(cat id.txt)
 USER_BUNDLE_ID=$(cat user_bundle_id.txt)
+KEYCHAIN_ID=$(hexdump -n 8 -v -e '/1 "%02X"' /dev/urandom)
+KEYCHAIN_ID="ios-signer-$KEYCHAIN_ID"
 
 echo "Creating keychain..."
-DEFAULT_KEYCHAIN=$(security default-keychain)
-USER_KEYCHAINS=$(security list-keychains -d user | tr -d '\n')
 function cleanup() {
     set +e
-    eval security list-keychain -d user -s $USER_KEYCHAINS
-    eval security default-keychain -s $DEFAULT_KEYCHAIN
-    security delete-keychain "ios-signer"
+    # remove the $KEYCHAIN_ID entry from the keychain list, using its short name to match the full path
+    # TODO: could there be a race condition between multiple instances of this script?
+    eval security list-keychains -d user -s $(echo "$(security list-keychains -d user)" | sed "s/\".*$KEYCHAIN_ID.*\"//")
+    security delete-keychain "$KEYCHAIN_ID"
 }
 trap cleanup SIGINT SIGTERM EXIT
-security create-keychain -p "1234" "ios-signer"
-security unlock-keychain -p "1234" "ios-signer"
-security default-keychain -s "ios-signer"
-security list-keychains -d user -s "ios-signer"
+security create-keychain -p "1234" "$KEYCHAIN_ID"
+security unlock-keychain -p "1234" "$KEYCHAIN_ID"
+eval security list-keychains -d user -s $(security list-keychains -d user) "$KEYCHAIN_ID"
 
 echo "Importing certificate..."
-security import "cert.p12" -P "$CERT_PASS" -A
-security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "1234" >/dev/null
-IDENTITY=$(security find-identity -p appleID -v | head -n 1 | grep -o '".*"' | cut -d '"' -f 2)
+security import "cert.p12" -P "$CERT_PASS" -A -k "$KEYCHAIN_ID"
+security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "1234" "$KEYCHAIN_ID" >/dev/null
+IDENTITY=$(security find-identity -p appleID -v "$KEYCHAIN_ID" | head -n 1 | grep -o '".*"' | cut -d '"' -f 2)
 
 if [ ! -f "prov.mobileprovision" ]; then
     if [ ! -f "account_name.txt" ] || [ ! -f "account_pass.txt" ]; then
