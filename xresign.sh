@@ -160,7 +160,7 @@ while IFS='' read -r line || [[ -n "$line" ]]; do
             echo "Setting entitlements app ID to $TEAM_ID.$EXTRA_ID"
             /usr/libexec/PlistBuddy -c "Set :application-identifier $TEAM_ID.$EXTRA_ID" "$TMPDIR/entitlements$var.plist"
         else
-            echo "WARNING: Provisioning profile's app ID $APP_ID doesn't match component's bundle ID $TEAM_ID.$EXTRA_ID." >&2
+            echo "WARNING: Provisioning profile's app ID $APP_ID doesn't match component's bundle ID $TEAM_ID.$EXTRA_ID" >&2
             echo "Leaving original entitlements - the app will run, but all entitlements will be broken!" >&2
         fi
 
