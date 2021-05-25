@@ -28,6 +28,10 @@ echo "Importing certificate..."
 security import "cert.p12" -P "$CERT_PASS" -A -k "$KEYCHAIN_ID"
 security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "1234" "$KEYCHAIN_ID" >/dev/null
 IDENTITY=$(security find-identity -p appleID -v "$KEYCHAIN_ID" | head -n 1 | grep -o '".*"' | cut -d '"' -f 2)
+if [ -z "$IDENTITY" ]; then
+    echo "No valid code signing certificate found, aborting." >&2
+    exit 1
+fi
 
 if [ ! -f "prov.mobileprovision" ]; then
     if [ ! -f "account_name.txt" ] || [ ! -f "account_pass.txt" ]; then
