@@ -14,6 +14,7 @@ KEYCHAIN_ID="ios-signer-$KEYCHAIN_ID"
 echo "Creating keychain..."
 function cleanup() {
     set +e
+    echo "Cleaning up..."
     # remove the $KEYCHAIN_ID entry from the keychain list, using its short name to match the full path
     # TODO: could there be a race condition between multiple instances of this script?
     eval security list-keychains -d user -s $(echo "$(security list-keychains -d user)" | sed "s/\".*$KEYCHAIN_ID.*\"//")

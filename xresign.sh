@@ -80,6 +80,7 @@ APPDIR="$TMPDIR/app"
 
 function cleanup() {
     set +e
+    echo "Cleaning up"
     rm -r "$TMPDIR"
 }
 trap cleanup SIGINT SIGTERM EXIT
