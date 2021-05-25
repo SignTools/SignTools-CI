@@ -74,10 +74,15 @@ echo "XReSign started"
 arg_check "$SOURCEIPA" "No input app provided (-i argument)"
 arg_check "$DEVELOPER" "No signing certificate provided (-c argument)"
 
-OUTDIR=$(dirname "$SOURCEIPA")
-OUTDIR="$PWD/$OUTDIR"
-TMPDIR="$OUTDIR/tmp"
+TMPDIR=$(hexdump -n 8 -v -e '/1 "%02X"' /dev/urandom)
+TMPDIR="xresign-tmp-$TMPDIR"
 APPDIR="$TMPDIR/app"
+
+function cleanup() {
+    set +e
+    rm -r "$TMPDIR"
+}
+trap cleanup SIGINT SIGTERM EXIT
 
 mkdir -p "$APPDIR"
 if command -v 7z &>/dev/null; then
@@ -88,18 +93,19 @@ else
     unzip -qo "$SOURCEIPA" -d "$APPDIR"
 fi
 
-APPLICATION=$(ls "$APPDIR/Payload/")
+APP_NAME=$(ls "$APPDIR/Payload/")
+arg_check "$APP_NAME" "No payload inside app"
 
 if [ -z "$MOBILEPROV" ]; then
     echo "Using app's existing provisioning profile"
 else
     echo "Using user-provided provisioning profile"
-    cp "$MOBILEPROV" "$APPDIR/Payload/$APPLICATION/embedded.mobileprovision"
+    cp "$MOBILEPROV" "$APPDIR/Payload/$APP_NAME/embedded.mobileprovision"
 fi
 
 if [ -z "$ENTITLEMENTS" ]; then
     echo "Extracting entitlements from provisioning profile"
-    security cms -D -i "$APPDIR/Payload/$APPLICATION/embedded.mobileprovision" >"$TMPDIR/provisioning.plist"
+    security cms -D -i "$APPDIR/Payload/$APP_NAME/embedded.mobileprovision" >"$TMPDIR/provisioning.plist"
     /usr/libexec/PlistBuddy -x -c 'Print:Entitlements' "$TMPDIR/provisioning.plist" >"$TMPDIR/entitlements.plist"
 else
     echo "Using user-provided entitlements"
@@ -188,20 +194,11 @@ while IFS='' read -r line || [[ -n "$line" ]]; do
 done <"$TMPDIR/components.txt"
 
 echo "Creating signed IPA"
+# strip the extension: "Example.app" -> "Example"
+SIGNED_IPA_PATH="$(basename ${SOURCEIPA%.*})"
+SIGNED_IPA_PATH="$PWD/$SIGNED_IPA_PATH-xresign.ipa"
 cd "$APPDIR"
-filename=$(basename "$APPLICATION")
-filename="${filename%.*}-xresign.ipa"
-zip -qr "../$filename" *
-cd ..
-mv "$filename" "$OUTDIR"
-
-echo "Cleaning temporary files"
-rm -rf "$APPDIR"
-rm "$TMPDIR/components.txt"
-rm "$TMPDIR/provisioning.plist" || true
-rm "$TMPDIR/entitlements"*".plist"
-if [ -z "$(ls -A "$TMPDIR")" ]; then
-    rm -d "$TMPDIR"
-fi
+zip -qr "$SIGNED_IPA_PATH" *
+cd - > /dev/null
 
 echo "XReSign finished"

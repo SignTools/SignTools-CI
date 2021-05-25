@@ -115,8 +115,8 @@ fi
 
 echo "Signing..."
 ./xresign.sh -i unsigned.ipa -c "$IDENTITY" -p "prov.mobileprovision" -w bundle_id.txt $SIGN_ARGS
+mv unsigned-xresign.ipa file.ipa
 rm unsigned.ipa
-mv *.ipa file.ipa
 
 echo "Uploading..."
 $CURL -S -H "Authorization: Bearer $SECRET_KEY" -F "file=@file.ipa" -F "bundle_id=$(cat bundle_id.txt)" "$SECRET_URL/jobs/$JOB_ID/signed"
