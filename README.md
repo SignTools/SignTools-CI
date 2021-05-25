@@ -24,9 +24,9 @@ You now need to configure a CI provider. You only need one of them:
 
 ### GitHub Actions
 
-1. Open your GitHub [account settings](https://github.com/settings/profile)
-2. Go to `Developer settings` and then `Personal access tokens`
-3. Generate a new token with the `workflow` permission
+1. Open the Personal access token generation page by [clicking here](https://github.com/settings/tokens/new)
+2. Select (grant) the `workflow` scope
+3. Generate the token
 
 This is the token you need for your `ios-signer-service`'s builder configuration.
 
@@ -41,4 +41,4 @@ This is the token you need for your `ios-signer-service`'s builder configuration
 7. Go to `Manage Settings` of that repository
 8. At the bottom of the page that opens, set `What to build` to `Do not build this project (Pause project)`
 
-At your SemaphoreCI profile settings, you will find your `API Token`. This is the token you need for your `ios-signer-service`'s builder configuration.
+View your API Token by [clicking here](https://me.semaphoreci.com/account). This is the token you need for your `ios-signer-service`'s builder configuration.
