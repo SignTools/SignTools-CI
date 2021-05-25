@@ -59,12 +59,20 @@ while getopts i:c:e:p:b:dasnw: option; do
     esac
 done
 
-if [ -z "$SOURCEIPA" ] || [ -z "$DEVELOPER" ]; then
-    echo "$usage" >&2
-    exit 1
-fi
+# $1 - variable to check if empty
+# $2 - messsage to show if variable was empty
+function arg_check() {
+    if [ -z "$1" ]; then
+        echo "$2" >&2
+        echo "$usage" >&2
+        exit 1
+    fi
+}
 
 echo "XReSign started"
+
+arg_check "$SOURCEIPA" "No input app provided (-i argument)"
+arg_check "$DEVELOPER" "No signing certificate provided (-c argument)"
 
 OUTDIR=$(dirname "$SOURCEIPA")
 OUTDIR="$PWD/$OUTDIR"
