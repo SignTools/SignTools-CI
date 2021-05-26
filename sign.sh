@@ -8,6 +8,7 @@ CERT_PASS=$(cat cert_pass.txt)
 SIGN_ARGS=$(cat args.txt)
 JOB_ID=$(cat id.txt)
 USER_BUNDLE_ID=$(cat user_bundle_id.txt)
+TEAM_ID=$(cat team_id.txt)
 KEYCHAIN_ID=$(hexdump -n 8 -v -e '/1 "%02X"' /dev/urandom)
 KEYCHAIN_ID="ios-signer-$KEYCHAIN_ID"
 
@@ -79,17 +80,6 @@ if [ ! -f "prov.mobileprovision" ]; then
 
     killall Xcode
 
-    echo "Parsing certificate..."
-    CERT_INFO=$(openssl pkcs12 -in cert.p12 -passin pass:"$CERT_PASS" -nokeys | openssl x509 -noout -subject)
-    if echo "$CERT_INFO" | grep ', OU = .*, ' >/dev/null 2>&1; then
-        TEAM_ID=$(echo "${CERT_INFO#*, OU = }" | cut -d',' -f1)
-    elif echo "$CERT_INFO" | grep '\/OU=.*\/' >/dev/null 2>&1; then
-        TEAM_ID=$(echo "${CERT_INFO#*\/OU=}" | cut -d'/' -f1)
-    else
-        echo "Unknown certificate dump format:" >&2
-        echo "$CERT_INFO" >&2
-        exit 1
-    fi
     sed -i "" -e "s/BUNDLE_ID_HERE_V9KP12/$USER_BUNDLE_ID/g" SimpleApp/SimpleApp.xcodeproj/project.pbxproj
     sed -i "" -e "s/DEV_TEAM_HERE_J8HK5C/$TEAM_ID/g" SimpleApp/SimpleApp.xcodeproj/project.pbxproj
     open -a "/Applications/Xcode.app" SimpleApp/SimpleApp.xcodeproj
