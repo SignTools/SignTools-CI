@@ -3,6 +3,8 @@ set -e
 CURL="curl -sfL"
 
 echo "Obtaining files..."
+# remove trailing slash and space
+SECRET_URL=$(echo "$SECRET_URL" | sed 's|[/ ]*$||')
 $CURL -S -H "Authorization: Bearer $SECRET_KEY" "$SECRET_URL/jobs" | tar -x
 CERT_PASS=$(cat cert_pass.txt)
 SIGN_ARGS=$(cat args.txt)
