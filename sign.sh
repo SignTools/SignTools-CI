@@ -16,7 +16,11 @@ KEYCHAIN_ID="ios-signer-$KEYCHAIN_ID"
 
 echo "Creating keychain..."
 function cleanup() {
+    ERROR_CODE=$?
     set +e
+    if [ $ERROR_CODE -ne 0 ]; then
+        $CURL -S -H "Authorization: Bearer $SECRET_KEY" "$SECRET_URL/jobs/$JOB_ID/fail"
+    fi
     echo "Cleaning up..."
     # remove the $KEYCHAIN_ID entry from the keychain list, using its short name to match the full path
     # TODO: could there be a race condition between multiple instances of this script?
