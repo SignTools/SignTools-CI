@@ -1,5 +1,5 @@
 #!/bin/bash
-set -e
+set -eu -o pipefail -E
 curl="curl -sfL"
 
 echo "Obtaining files..."

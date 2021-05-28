@@ -1,5 +1,5 @@
 #!/bin/bash
-set -e
+set -eu -o pipefail -E
 
 while getopts i:c:p:b:dasn option; do
     case "${option}" in
@@ -41,7 +41,7 @@ done
 # $1 - variable to check if empty
 # $2 - message to show if variable was empty
 function check_empty() {
-    if [ -z "$1" ]; then
+    if [[ -z "$1" ]]; then
         echo "$2" >&2
         exit 1
     fi
@@ -86,7 +86,7 @@ security cms -D -i "$app_dir/Payload/$app_name/embedded.mobileprovision" >"$prov
 /usr/libexec/PlistBuddy -x -c 'Print:Entitlements' "$provisioning_plist" >"$user_entitlements_plist"
 
 /usr/libexec/PlistBuddy -c "Delete :get-task-allow" "$user_entitlements_plist" || true
-if [ -n "$enable_debug" ]; then
+if [[ -n "${enable_debug+x}" ]]; then
     echo "Enabling app debugging"
     /usr/libexec/PlistBuddy -c "Add :get-task-allow bool true" "$user_entitlements_plist"
 else
@@ -96,7 +96,7 @@ fi
 app_id=$(/usr/libexec/PlistBuddy -c 'Print application-identifier' "$user_entitlements_plist")
 team_id=$(/usr/libexec/PlistBuddy -c 'Print com.apple.developer.team-identifier' "$user_entitlements_plist")
 
-if [[ -n "$align_app_id" ]]; then
+if [[ -n "${align_app_id+x}" ]]; then
     if [[ "$app_id" == "$team_id.*" ]]; then
         echo "WARNING: Not setting bundle id to provisioning profile's app id because the latter is wildcard" >&2
         # Otherwise bundle id would be "*", and while that happens to work, it is invalid and could
@@ -119,7 +119,7 @@ while IFS='' read -r line || [[ -n "$line" ]]; do
         entitlements_plist="$tmp_dir/entitlements$var.plist"
         cp "$user_entitlements_plist" "$entitlements_plist"
 
-        if [[ -n "$user_bundle_id" ]]; then
+        if [[ -n "${user_bundle_id+x}" ]]; then
             if [[ "$line" == *".app" ]]; then
                 bundle_id="$user_bundle_id"
             else
@@ -129,7 +129,7 @@ while IFS='' read -r line || [[ -n "$line" ]]; do
             /usr/libexec/PlistBuddy -c "Set:CFBundleIdentifier $bundle_id" "$info_plist"
         fi
 
-        if [[ -n "$all_devices" ]]; then
+        if [[ -n "${all_devices+x}" ]]; then
             echo "Force enabling support for all devices"
             /usr/libexec/PlistBuddy -c "Delete :UISupportedDevices" "$info_plist" || true
             # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/iPhoneOSKeys.html
@@ -139,7 +139,7 @@ while IFS='' read -r line || [[ -n "$line" ]]; do
             /usr/libexec/PlistBuddy -c "Add :UIDeviceFamily:1 integer 2" "$info_plist"
         fi
 
-        if [ -n "$file_sharing" ]; then
+        if [[ -n "${file_sharing+x}" ]]; then
             echo "Force enabling file sharing"
             /usr/libexec/PlistBuddy -c "Delete :UIFileSharingEnabled" "$info_plist" || true
             /usr/libexec/PlistBuddy -c "Add :UIFileSharingEnabled bool true" "$info_plist"
