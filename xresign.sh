@@ -13,7 +13,7 @@ while getopts i:c:p:b:dasn option; do
         mobile_prov=${OPTARG}
         ;;
     b) # new bundle id (Optional)
-        bundle_id=${OPTARG}
+        user_bundle_id=${OPTARG}
         ;;
     d) # enable app debugging (get-task-allow) (Optional)
         enable_debug=1
@@ -101,7 +101,7 @@ if [[ -n "$align_app_id" ]]; then
         # break in a future iOS update
     else
         echo "Setting bundle id to provisioning profile's app id $app_id"
-        bundle_id="${app_id#*.}"
+        user_bundle_id="${app_id#*.}"
     fi
 fi
 
@@ -114,14 +114,14 @@ while IFS='' read -r line || [[ -n "$line" ]]; do
 
     if [[ "$line" == *".app" ]] || [[ "$line" == *".appex" ]]; then
         cp "$tmp_dir/entitlements.plist" "$tmp_dir/entitlements$var.plist"
-        if [[ -n "$bundle_id" ]]; then
+        if [[ -n "$user_bundle_id" ]]; then
             if [[ "$line" == *".app" ]]; then
-                extra_id="$bundle_id"
+                bundle_id="$user_bundle_id"
             else
-                extra_id="$bundle_id.extra$var"
+                bundle_id="$user_bundle_id.extra$var"
             fi
-            echo "Setting bundle ID to $extra_id"
-            /usr/libexec/PlistBuddy -c "Set:CFBundleIdentifier $extra_id" "$line/Info.plist"
+            echo "Setting bundle ID to $bundle_id"
+            /usr/libexec/PlistBuddy -c "Set:CFBundleIdentifier $bundle_id" "$line/Info.plist"
         fi
 
         if [[ -n "$all_devices" ]]; then
@@ -140,18 +140,18 @@ while IFS='' read -r line || [[ -n "$line" ]]; do
             /usr/libexec/PlistBuddy -c "Add :UIFileSharingEnabled bool true" "$line/Info.plist"
         fi
 
-        extra_id=$(/usr/libexec/PlistBuddy -c 'Print CFBundleIdentifier' "$line/Info.plist")
-        if [[ "$app_id" == "$team_id.$extra_id" ]] || [[ "$app_id" == "$team_id.*" ]]; then
-            echo "Setting entitlements app ID to $team_id.$extra_id"
-            /usr/libexec/PlistBuddy -c "Set :application-identifier $team_id.$extra_id" "$tmp_dir/entitlements$var.plist"
+        bundle_id=$(/usr/libexec/PlistBuddy -c 'Print CFBundleIdentifier' "$line/Info.plist")
+        if [[ "$app_id" == "$team_id.$bundle_id" ]] || [[ "$app_id" == "$team_id.*" ]]; then
+            echo "Setting entitlements app ID to $team_id.$bundle_id"
+            /usr/libexec/PlistBuddy -c "Set :application-identifier $team_id.$bundle_id" "$tmp_dir/entitlements$var.plist"
         else
-            echo "WARNING: Provisioning profile's app ID $app_id doesn't match component's bundle ID $team_id.$extra_id" >&2
-            echo "Leaving original entitlements - the app will run, but all entitlements will be broken!" >&2
+            echo "WARNING: Provisioning profile's app ID $app_id doesn't match component's bundle ID $team_id.$bundle_id" >&2
+            echo "Leaving original entitlements app ID - the app will run, but all entitlements will be broken!" >&2
         fi
 
         if [[ "$line" == *".app" ]]; then
             echo "Writing bundle id to file"
-            echo "$extra_id" >bundle_id.txt
+            echo "$bundle_id" >bundle_id.txt
         fi
 
         /usr/bin/codesign --continue -f -s "$identity" --entitlements "$tmp_dir/entitlements$var.plist" "$line"
