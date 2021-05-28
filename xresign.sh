@@ -51,6 +51,7 @@ echo "XReSign started"
 
 check_empty "$source_ipa" "No input app provided (-i argument)"
 check_empty "$identity" "No signing certificate provided (-c argument)"
+check_empty "$mobile_prov" "No provisioning profile provided (-p argument)"
 
 tmp_dir=$(hexdump -n 8 -v -e '/1 "%02X"' /dev/urandom)
 tmp_dir="xresign-tmp-$tmp_dir"
@@ -75,12 +76,8 @@ fi
 app_name=$(ls "$app_dir/Payload/")
 check_empty "$app_name" "No payload inside app"
 
-if [ -z "$mobile_prov" ]; then
-    echo "Using app's existing provisioning profile"
-else
-    echo "Using user-provided provisioning profile"
-    cp "$mobile_prov" "$app_dir/Payload/$app_name/embedded.mobileprovision"
-fi
+echo "Using user-provided provisioning profile"
+cp "$mobile_prov" "$app_dir/Payload/$app_name/embedded.mobileprovision"
 
 echo "Extracting entitlements from provisioning profile"
 security cms -D -i "$app_dir/Payload/$app_name/embedded.mobileprovision" >"$tmp_dir/provisioning.plist"
