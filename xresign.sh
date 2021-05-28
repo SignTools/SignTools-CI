@@ -80,19 +80,21 @@ echo "Using user-provided provisioning profile"
 cp "$mobile_prov" "$app_dir/Payload/$app_name/embedded.mobileprovision"
 
 echo "Extracting entitlements from provisioning profile"
-security cms -D -i "$app_dir/Payload/$app_name/embedded.mobileprovision" >"$tmp_dir/provisioning.plist"
-/usr/libexec/PlistBuddy -x -c 'Print:Entitlements' "$tmp_dir/provisioning.plist" >"$tmp_dir/entitlements.plist"
+provisioning_plist="$tmp_dir/provisioning.plist"
+user_entitlements_plist="$tmp_dir/entitlements.plist"
+security cms -D -i "$app_dir/Payload/$app_name/embedded.mobileprovision" >"$provisioning_plist"
+/usr/libexec/PlistBuddy -x -c 'Print:Entitlements' "$provisioning_plist" >"$user_entitlements_plist"
 
-/usr/libexec/PlistBuddy -c "Delete :get-task-allow" "$tmp_dir/entitlements.plist" || true
+/usr/libexec/PlistBuddy -c "Delete :get-task-allow" "$user_entitlements_plist" || true
 if [ -n "$enable_debug" ]; then
     echo "Enabling app debugging"
-    /usr/libexec/PlistBuddy -c "Add :get-task-allow bool true" "$tmp_dir/entitlements.plist"
+    /usr/libexec/PlistBuddy -c "Add :get-task-allow bool true" "$user_entitlements_plist"
 else
     echo "Disabled app debugging"
 fi
 
-app_id=$(/usr/libexec/PlistBuddy -c 'Print application-identifier' "$tmp_dir/entitlements.plist")
-team_id=$(/usr/libexec/PlistBuddy -c 'Print com.apple.developer.team-identifier' "$tmp_dir/entitlements.plist")
+app_id=$(/usr/libexec/PlistBuddy -c 'Print application-identifier' "$user_entitlements_plist")
+team_id=$(/usr/libexec/PlistBuddy -c 'Print com.apple.developer.team-identifier' "$user_entitlements_plist")
 
 if [[ -n "$align_app_id" ]]; then
     if [[ "$app_id" == "$team_id.*" ]]; then
@@ -106,14 +108,17 @@ if [[ -n "$align_app_id" ]]; then
 fi
 
 echo "Building list of app components"
-find -d "$app_dir" \( -name "*.app" -o -name "*.appex" -o -name "*.framework" -o -name "*.dylib" \) >"$tmp_dir/components.txt"
+components=$(find -d "$app_dir" \( -name "*.app" -o -name "*.appex" -o -name "*.framework" -o -name "*.dylib" \))
 
 var=$((0))
 while IFS='' read -r line || [[ -n "$line" ]]; do
     echo "Processing component $line"
 
     if [[ "$line" == *".app" ]] || [[ "$line" == *".appex" ]]; then
-        cp "$tmp_dir/entitlements.plist" "$tmp_dir/entitlements$var.plist"
+        info_plist="$line/Info.plist"
+        entitlements_plist="$tmp_dir/entitlements$var.plist"
+        cp "$user_entitlements_plist" "$entitlements_plist"
+
         if [[ -n "$user_bundle_id" ]]; then
             if [[ "$line" == *".app" ]]; then
                 bundle_id="$user_bundle_id"
@@ -121,29 +126,29 @@ while IFS='' read -r line || [[ -n "$line" ]]; do
                 bundle_id="$user_bundle_id.extra$var"
             fi
             echo "Setting bundle ID to $bundle_id"
-            /usr/libexec/PlistBuddy -c "Set:CFBundleIdentifier $bundle_id" "$line/Info.plist"
+            /usr/libexec/PlistBuddy -c "Set:CFBundleIdentifier $bundle_id" "$info_plist"
         fi
 
         if [[ -n "$all_devices" ]]; then
             echo "Force enabling support for all devices"
-            /usr/libexec/PlistBuddy -c "Delete :UISupportedDevices" "$line/Info.plist" || true
+            /usr/libexec/PlistBuddy -c "Delete :UISupportedDevices" "$info_plist" || true
             # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/iPhoneOSKeys.html
-            /usr/libexec/PlistBuddy -c "Delete :UIDeviceFamily" "$line/Info.plist" || true
-            /usr/libexec/PlistBuddy -c "Add :UIDeviceFamily array" "$line/Info.plist"
-            /usr/libexec/PlistBuddy -c "Add :UIDeviceFamily:0 integer 1" "$line/Info.plist"
-            /usr/libexec/PlistBuddy -c "Add :UIDeviceFamily:1 integer 2" "$line/Info.plist"
+            /usr/libexec/PlistBuddy -c "Delete :UIDeviceFamily" "$info_plist" || true
+            /usr/libexec/PlistBuddy -c "Add :UIDeviceFamily array" "$info_plist"
+            /usr/libexec/PlistBuddy -c "Add :UIDeviceFamily:0 integer 1" "$info_plist"
+            /usr/libexec/PlistBuddy -c "Add :UIDeviceFamily:1 integer 2" "$info_plist"
         fi
 
         if [ -n "$file_sharing" ]; then
             echo "Force enabling file sharing"
-            /usr/libexec/PlistBuddy -c "Delete :UIFileSharingEnabled" "$line/Info.plist" || true
-            /usr/libexec/PlistBuddy -c "Add :UIFileSharingEnabled bool true" "$line/Info.plist"
+            /usr/libexec/PlistBuddy -c "Delete :UIFileSharingEnabled" "$info_plist" || true
+            /usr/libexec/PlistBuddy -c "Add :UIFileSharingEnabled bool true" "$info_plist"
         fi
 
-        bundle_id=$(/usr/libexec/PlistBuddy -c 'Print CFBundleIdentifier' "$line/Info.plist")
+        bundle_id=$(/usr/libexec/PlistBuddy -c 'Print CFBundleIdentifier' "$info_plist")
         if [[ "$app_id" == "$team_id.$bundle_id" ]] || [[ "$app_id" == "$team_id.*" ]]; then
             echo "Setting entitlements app ID to $team_id.$bundle_id"
-            /usr/libexec/PlistBuddy -c "Set :application-identifier $team_id.$bundle_id" "$tmp_dir/entitlements$var.plist"
+            /usr/libexec/PlistBuddy -c "Set :application-identifier $team_id.$bundle_id" "$entitlements_plist"
         else
             echo "WARNING: Provisioning profile's app ID $app_id doesn't match component's bundle ID $team_id.$bundle_id" >&2
             echo "Leaving original entitlements app ID - the app will run, but all entitlements will be broken!" >&2
@@ -154,7 +159,7 @@ while IFS='' read -r line || [[ -n "$line" ]]; do
             echo "$bundle_id" >bundle_id.txt
         fi
 
-        /usr/bin/codesign --continue -f -s "$identity" --entitlements "$tmp_dir/entitlements$var.plist" "$line"
+        /usr/bin/codesign --continue -f -s "$identity" --entitlements "$entitlements_plist" "$line"
     else
         # Entitlements of frameworks, etc. don't matter, so leave them (potentially) invalid
         echo "Signing with original entitlements"
@@ -162,7 +167,7 @@ while IFS='' read -r line || [[ -n "$line" ]]; do
     fi
 
     var=$((var + 1))
-done <"$tmp_dir/components.txt"
+done < <(printf '%s\n' "$components")
 
 echo "Creating signed IPA"
 # strip the extension: "Example.app" -> "Example"
