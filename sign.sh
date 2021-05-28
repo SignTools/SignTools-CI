@@ -4,6 +4,7 @@ CURL="curl -sfL"
 
 echo "Obtaining files..."
 # remove trailing slash and space
+# shellcheck disable=SC2001
 SECRET_URL=$(echo "$SECRET_URL" | sed 's|[/ ]*$||')
 $CURL -S -H "Authorization: Bearer $SECRET_KEY" "$SECRET_URL/jobs" | tar -x
 CERT_PASS=$(cat cert_pass.txt)
@@ -24,12 +25,15 @@ function cleanup() {
     echo "Cleaning up..."
     # remove the $KEYCHAIN_ID entry from the keychain list, using its short name to match the full path
     # TODO: could there be a race condition between multiple instances of this script?
-    eval security list-keychains -d user -s $(echo "$(security list-keychains -d user)" | sed "s/\".*$KEYCHAIN_ID.*\"//")
+    # shellcheck disable=SC2001
+    # shellcheck disable=SC2046
+    eval security list-keychains -d user -s $(security list-keychains -d user | sed "s/\".*$KEYCHAIN_ID.*\"//")
     security delete-keychain "$KEYCHAIN_ID"
 }
 trap cleanup SIGINT SIGTERM EXIT
 security create-keychain -p "1234" "$KEYCHAIN_ID"
 security unlock-keychain -p "1234" "$KEYCHAIN_ID"
+# shellcheck disable=SC2046
 eval security list-keychains -d user -s $(security list-keychains -d user) "$KEYCHAIN_ID"
 
 echo "Importing certificate..."
@@ -58,27 +62,28 @@ if [ ! -f "prov.mobileprovision" ]; then
     echo >dummy.developerprofile
     # force Xcode to open the Accounts screen
     open -a "/Applications/Xcode.app" dummy.developerprofile
-    export ACCOUNT_NAME=$(cat account_name.txt)
-    export ACCOUNT_PASS=$(cat account_pass.txt)
+    ACCOUNT_NAME=$(cat account_name.txt)
+    ACCOUNT_PASS=$(cat account_pass.txt)
+    export ACCOUNT_NAME ACCOUNT_PASS
     osascript login1.applescript
 
     echo "Logging in (2/2)..."
     echo "If you receive a two-factor authentication (2FA) code, please submit it to the web service."
     i=0
-    ret=1
+    code_entered=0
     while true; do
         if [ $i -gt 60 ]; then
             echo "Operation timed out" >&2
             exit 1
-        fi
-        if osascript login3.applescript >/dev/null 2>&1; then
+        elif osascript login3.applescript >/dev/null 2>&1; then
             echo "Logged in!"
             break
-        elif [ $ret -ne 0 ]; then
-            $CURL -H "Authorization: Bearer $SECRET_KEY" "$SECRET_URL/jobs/$JOB_ID/2fa" -o account_2fa.txt && ret=0 || continue
+        elif [ $code_entered -eq 0 ] && $CURL -H "Authorization: Bearer $SECRET_KEY" "$SECRET_URL/jobs/$JOB_ID/2fa" -o account_2fa.txt; then
             echo "Entering 2FA code..."
-            export ACCOUNT_2FA="$(cat account_2fa.txt)"
+            ACCOUNT_2FA="$(cat account_2fa.txt)"
+            export ACCOUNT_2FA
             osascript login2.applescript
+            code_entered=1
         fi
         sleep 1
         ((i++))
@@ -92,16 +97,16 @@ if [ ! -f "prov.mobileprovision" ]; then
 
     echo "Waiting for provisioning profile to appear..."
     i=0
-    ret=1
-    while [ $ret -ne 0 ]; do
+    while true; do
         if [ $i -gt 15 ]; then
             echo "Operation timed out. Possible reasons:" >&2
             echo "- You haven't registered your device's UDID with the developer account" >&2
             echo "- You used an invalid or already existing bundle id" >&2
             echo "- You exceeded the 10 app ids per 7 days limit on free accounts" >&2
             exit 1
+        elif ls "$HOME/Library/MobileDevice/Provisioning Profiles/"* >/dev/null 2>&1; then
+            break
         fi
-        ls "$HOME/Library/MobileDevice/Provisioning Profiles/"* >/dev/null 2>&1 && ret=$? || ret=$?
         sleep 1
         ((i++))
     done
@@ -111,7 +116,8 @@ if [ ! -f "prov.mobileprovision" ]; then
 fi
 
 echo "Signing..."
-./xresign.sh -i unsigned.ipa -c "$IDENTITY" -p "prov.mobileprovision" -w bundle_id.txt $SIGN_ARGS
+# shellcheck disable=SC2086
+./xresign.sh -i unsigned.ipa -c "$IDENTITY" -p "prov.mobileprovision" $SIGN_ARGS
 mv unsigned-xresign.ipa file.ipa
 rm unsigned.ipa
 

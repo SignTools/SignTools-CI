@@ -1,128 +1,101 @@
-# !/bin/bash
+#!/bin/bash
 set -e
 
-usage="Usage: $(basename "$0") -i APP_PATH -c CERT_NAME [-epbdas ...]
-
--i  path to input app to sign
--c  Common Name of signing certificate in Keychain
--e  new entitlements to use for app (Optional)
--p  path to mobile provisioning file (Optional)
--b  new bundle id (Optional)
--d  enable app debugging (get-task-allow) (Optional)
--a  force enable support for all devices (Optional)
--s  force enable file sharing through iTunes (Optional)
--n  set bundle id to mobile provisioning app id (Optional)
--w  write bundle id to file (Optional)"
-
-while getopts i:c:e:p:b:dasnw: option; do
+while getopts i:c:p:b:dasn option; do
     case "${option}" in
-    i)
-        SOURCEIPA=${OPTARG}
+    i) # path to input app to sign
+        SOURCE_IPA=${OPTARG}
         ;;
-    c)
-        DEVELOPER=${OPTARG}
+    c) # Common Name (CN) of signing certificate in Keychain
+        IDENTITY=${OPTARG}
         ;;
-    e)
-        ENTITLEMENTS=${OPTARG}
+    p) # path to provisioning profile file (Optional)
+        MOBILE_PROV=${OPTARG}
         ;;
-    p)
-        MOBILEPROV=${OPTARG}
+    b) # new bundle id (Optional)
+        BUNDLE_ID=${OPTARG}
         ;;
-    b)
-        BUNDLEID=${OPTARG}
-        ;;
-    d)
+    d) # enable app debugging (get-task-allow) (Optional)
         ENABLE_DEBUG=1
         ;;
-    a)
+    a) # force enable support for all devices (Optional)
         ALL_DEVICES=1
         ;;
-    s)
+    s) # force enable file sharing through iTunes (Optional)
         FILE_SHARING=1
         ;;
-    n)
+    n) # set bundle id to mobile provisioning app id (Optional)
         ALIGN_APP_ID=1
-        ;;
-    w)
-        BUNDLEID_SAVE_FILE=${OPTARG}
         ;;
     \?)
         echo "Invalid option: -$OPTARG" >&2
-        echo "$usage" >&2
         exit 1
         ;;
     :)
         echo "Missing argument for -$OPTARG" >&2
-        echo "$usage" >&2
         exit 1
         ;;
     esac
 done
 
 # $1 - variable to check if empty
-# $2 - messsage to show if variable was empty
-function arg_check() {
+# $2 - message to show if variable was empty
+function check_empty() {
     if [ -z "$1" ]; then
         echo "$2" >&2
-        echo "$usage" >&2
         exit 1
     fi
 }
 
 echo "XReSign started"
 
-arg_check "$SOURCEIPA" "No input app provided (-i argument)"
-arg_check "$DEVELOPER" "No signing certificate provided (-c argument)"
+check_empty "$SOURCE_IPA" "No input app provided (-i argument)"
+check_empty "$IDENTITY" "No signing certificate provided (-c argument)"
 
-TMPDIR=$(hexdump -n 8 -v -e '/1 "%02X"' /dev/urandom)
-TMPDIR="xresign-tmp-$TMPDIR"
-APPDIR="$TMPDIR/app"
+TMP_DIR=$(hexdump -n 8 -v -e '/1 "%02X"' /dev/urandom)
+TMP_DIR="xresign-tmp-$TMP_DIR"
+APP_DIR="$TMP_DIR/app"
 
 function cleanup() {
     set +e
     echo "Cleaning up"
-    rm -r "$TMPDIR"
+    rm -r "$TMP_DIR"
 }
 trap cleanup SIGINT SIGTERM EXIT
 
-mkdir -p "$APPDIR"
+mkdir -p "$APP_DIR"
 if command -v 7z &>/dev/null; then
     echo "Extracting app using 7zip"
-    7z x "$SOURCEIPA" -o"$APPDIR" >/dev/null
+    7z x "$SOURCE_IPA" -o"$APP_DIR" >/dev/null
 else
     echo "Extracting app using unzip"
-    unzip -qo "$SOURCEIPA" -d "$APPDIR"
+    unzip -qo "$SOURCE_IPA" -d "$APP_DIR"
 fi
 
-APP_NAME=$(ls "$APPDIR/Payload/")
-arg_check "$APP_NAME" "No payload inside app"
+APP_NAME=$(ls "$APP_DIR/Payload/")
+check_empty "$APP_NAME" "No payload inside app"
 
-if [ -z "$MOBILEPROV" ]; then
+if [ -z "$MOBILE_PROV" ]; then
     echo "Using app's existing provisioning profile"
 else
     echo "Using user-provided provisioning profile"
-    cp "$MOBILEPROV" "$APPDIR/Payload/$APP_NAME/embedded.mobileprovision"
+    cp "$MOBILE_PROV" "$APP_DIR/Payload/$APP_NAME/embedded.mobileprovision"
 fi
 
-if [ -z "$ENTITLEMENTS" ]; then
-    echo "Extracting entitlements from provisioning profile"
-    security cms -D -i "$APPDIR/Payload/$APP_NAME/embedded.mobileprovision" >"$TMPDIR/provisioning.plist"
-    /usr/libexec/PlistBuddy -x -c 'Print:Entitlements' "$TMPDIR/provisioning.plist" >"$TMPDIR/entitlements.plist"
-else
-    echo "Using user-provided entitlements"
-    cp "$ENTITLEMENTS" "$TMPDIR/entitlements.plist"
-fi
+echo "Extracting entitlements from provisioning profile"
+security cms -D -i "$APP_DIR/Payload/$APP_NAME/embedded.mobileprovision" >"$TMP_DIR/provisioning.plist"
+/usr/libexec/PlistBuddy -x -c 'Print:Entitlements' "$TMP_DIR/provisioning.plist" >"$TMP_DIR/entitlements.plist"
 
-/usr/libexec/PlistBuddy -c "Delete :get-task-allow" "$TMPDIR/entitlements.plist" || true
+/usr/libexec/PlistBuddy -c "Delete :get-task-allow" "$TMP_DIR/entitlements.plist" || true
 if [ -n "$ENABLE_DEBUG" ]; then
     echo "Enabling app debugging"
-    /usr/libexec/PlistBuddy -c "Add :get-task-allow bool true" "$TMPDIR/entitlements.plist"
+    /usr/libexec/PlistBuddy -c "Add :get-task-allow bool true" "$TMP_DIR/entitlements.plist"
 else
     echo "Disabled app debugging"
 fi
 
-APP_ID=$(/usr/libexec/PlistBuddy -c 'Print application-identifier' "$TMPDIR/entitlements.plist")
-TEAM_ID=$(/usr/libexec/PlistBuddy -c 'Print com.apple.developer.team-identifier' "$TMPDIR/entitlements.plist")
+APP_ID=$(/usr/libexec/PlistBuddy -c 'Print application-identifier' "$TMP_DIR/entitlements.plist")
+TEAM_ID=$(/usr/libexec/PlistBuddy -c 'Print com.apple.developer.team-identifier' "$TMP_DIR/entitlements.plist")
 
 if [[ -n "$ALIGN_APP_ID" ]]; then
     if [[ "$APP_ID" == "$TEAM_ID.*" ]]; then
@@ -131,24 +104,24 @@ if [[ -n "$ALIGN_APP_ID" ]]; then
         # break in a future iOS update
     else
         echo "Setting bundle id to provisioning profile's app id $APP_ID"
-        BUNDLEID="${APP_ID#*.}"
+        BUNDLE_ID="${APP_ID#*.}"
     fi
 fi
 
 echo "Building list of app components"
-find -d "$APPDIR" \( -name "*.app" -o -name "*.appex" -o -name "*.framework" -o -name "*.dylib" \) >"$TMPDIR/components.txt"
+find -d "$APP_DIR" \( -name "*.app" -o -name "*.appex" -o -name "*.framework" -o -name "*.dylib" \) >"$TMP_DIR/components.txt"
 
 var=$((0))
 while IFS='' read -r line || [[ -n "$line" ]]; do
     echo "Processing component $line"
 
     if [[ "$line" == *".app" ]] || [[ "$line" == *".appex" ]]; then
-        cp "$TMPDIR/entitlements.plist" "$TMPDIR/entitlements$var.plist"
-        if [[ -n "$BUNDLEID" ]]; then
+        cp "$TMP_DIR/entitlements.plist" "$TMP_DIR/entitlements$var.plist"
+        if [[ -n "$BUNDLE_ID" ]]; then
             if [[ "$line" == *".app" ]]; then
-                EXTRA_ID="$BUNDLEID"
+                EXTRA_ID="$BUNDLE_ID"
             else
-                EXTRA_ID="$BUNDLEID.extra$var"
+                EXTRA_ID="$BUNDLE_ID.extra$var"
             fi
             echo "Setting bundle ID to $EXTRA_ID"
             /usr/libexec/PlistBuddy -c "Set:CFBundleIdentifier $EXTRA_ID" "$line/Info.plist"
@@ -173,33 +146,33 @@ while IFS='' read -r line || [[ -n "$line" ]]; do
         EXTRA_ID=$(/usr/libexec/PlistBuddy -c 'Print CFBundleIdentifier' "$line/Info.plist")
         if [[ "$APP_ID" == "$TEAM_ID.$EXTRA_ID" ]] || [[ "$APP_ID" == "$TEAM_ID.*" ]]; then
             echo "Setting entitlements app ID to $TEAM_ID.$EXTRA_ID"
-            /usr/libexec/PlistBuddy -c "Set :application-identifier $TEAM_ID.$EXTRA_ID" "$TMPDIR/entitlements$var.plist"
+            /usr/libexec/PlistBuddy -c "Set :application-identifier $TEAM_ID.$EXTRA_ID" "$TMP_DIR/entitlements$var.plist"
         else
             echo "WARNING: Provisioning profile's app ID $APP_ID doesn't match component's bundle ID $TEAM_ID.$EXTRA_ID" >&2
             echo "Leaving original entitlements - the app will run, but all entitlements will be broken!" >&2
         fi
 
-        if [ -n "$BUNDLEID_SAVE_FILE" ] && [[ "$line" == *".app" ]]; then
+        if [[ "$line" == *".app" ]]; then
             echo "Writing bundle id to file"
-            echo "$EXTRA_ID" >"$BUNDLEID_SAVE_FILE"
+            echo "$EXTRA_ID" >bundle_id.txt
         fi
 
-        /usr/bin/codesign --continue -f -s "$DEVELOPER" --entitlements "$TMPDIR/entitlements$var.plist" "$line"
+        /usr/bin/codesign --continue -f -s "$IDENTITY" --entitlements "$TMP_DIR/entitlements$var.plist" "$line"
     else
         # Entitlements of frameworks, etc. don't matter, so leave them (potentially) invalid
         echo "Signing with original entitlements"
-        /usr/bin/codesign --continue -f -s "$DEVELOPER" "$line"
+        /usr/bin/codesign --continue -f -s "$IDENTITY" "$line"
     fi
 
     var=$((var + 1))
-done <"$TMPDIR/components.txt"
+done <"$TMP_DIR/components.txt"
 
 echo "Creating signed IPA"
 # strip the extension: "Example.app" -> "Example"
-SIGNED_IPA_PATH="$(basename ${SOURCEIPA%.*})"
-SIGNED_IPA_PATH="$PWD/$SIGNED_IPA_PATH-xresign.ipa"
-cd "$APPDIR"
-zip -qr "$SIGNED_IPA_PATH" *
-cd - > /dev/null
+SIGNED_IPA="$(basename "${SOURCE_IPA%.*}")"
+SIGNED_IPA="$PWD/$SIGNED_IPA-xresign.ipa"
+cd "$APP_DIR"
+zip -qr "$SIGNED_IPA" -- *
+cd - >/dev/null
 
 echo "XReSign finished"
