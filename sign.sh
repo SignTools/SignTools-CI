@@ -1,46 +1,46 @@
 #!/bin/bash
 set -e
-CURL="curl -sfL"
+curl="curl -sfL"
 
 echo "Obtaining files..."
 # remove trailing slash and space
 # shellcheck disable=SC2001
 SECRET_URL=$(echo "$SECRET_URL" | sed 's|[/ ]*$||')
-$CURL -S -H "Authorization: Bearer $SECRET_KEY" "$SECRET_URL/jobs" | tar -x
-CERT_PASS=$(cat cert_pass.txt)
-SIGN_ARGS=$(cat args.txt)
-JOB_ID=$(cat id.txt)
-USER_BUNDLE_ID=$(cat user_bundle_id.txt)
-TEAM_ID=$(cat team_id.txt)
-KEYCHAIN_ID=$(hexdump -n 8 -v -e '/1 "%02X"' /dev/urandom)
-KEYCHAIN_ID="ios-signer-$KEYCHAIN_ID"
+$curl -S -H "Authorization: Bearer $SECRET_KEY" "$SECRET_URL/jobs" | tar -x
+cert_pass=$(cat cert_pass.txt)
+sign_args=$(cat args.txt)
+job_id=$(cat id.txt)
+user_bundle_id=$(cat user_bundle_id.txt)
+team_id=$(cat team_id.txt)
+keychain_id=$(hexdump -n 8 -v -e '/1 "%02X"' /dev/urandom)
+keychain_id="ios-signer-$keychain_id"
 
 echo "Creating keychain..."
 function cleanup() {
-    ERROR_CODE=$?
+    error_code=$?
     set +e
-    if [ $ERROR_CODE -ne 0 ]; then
-        $CURL -S -H "Authorization: Bearer $SECRET_KEY" "$SECRET_URL/jobs/$JOB_ID/fail"
+    if [ $error_code -ne 0 ]; then
+        $curl -S -H "Authorization: Bearer $SECRET_KEY" "$SECRET_URL/jobs/$job_id/fail"
     fi
     echo "Cleaning up..."
-    # remove the $KEYCHAIN_ID entry from the keychain list, using its short name to match the full path
+    # remove the $keychain_id entry from the keychain list, using its short name to match the full path
     # TODO: could there be a race condition between multiple instances of this script?
     # shellcheck disable=SC2001
     # shellcheck disable=SC2046
-    eval security list-keychains -d user -s $(security list-keychains -d user | sed "s/\".*$KEYCHAIN_ID.*\"//")
-    security delete-keychain "$KEYCHAIN_ID"
+    eval security list-keychains -d user -s $(security list-keychains -d user | sed "s/\".*$keychain_id.*\"//")
+    security delete-keychain "$keychain_id"
 }
 trap cleanup SIGINT SIGTERM EXIT
-security create-keychain -p "1234" "$KEYCHAIN_ID"
-security unlock-keychain -p "1234" "$KEYCHAIN_ID"
+security create-keychain -p "1234" "$keychain_id"
+security unlock-keychain -p "1234" "$keychain_id"
 # shellcheck disable=SC2046
-eval security list-keychains -d user -s $(security list-keychains -d user) "$KEYCHAIN_ID"
+eval security list-keychains -d user -s $(security list-keychains -d user) "$keychain_id"
 
 echo "Importing certificate..."
-security import "cert.p12" -P "$CERT_PASS" -A -k "$KEYCHAIN_ID"
-security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "1234" "$KEYCHAIN_ID" >/dev/null
-IDENTITY=$(security find-identity -p appleID -v "$KEYCHAIN_ID" | head -n 1 | grep -o '".*"' | cut -d '"' -f 2)
-if [ -z "$IDENTITY" ]; then
+security import "cert.p12" -P "$cert_pass" -A -k "$keychain_id"
+security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "1234" "$keychain_id" >/dev/null
+identity=$(security find-identity -p appleID -v "$keychain_id" | head -n 1 | grep -o '".*"' | cut -d '"' -f 2)
+if [ -z "$identity" ]; then
     echo "No valid code signing certificate found, aborting." >&2
     exit 1
 fi
@@ -50,7 +50,7 @@ if [ ! -f "prov.mobileprovision" ]; then
         echo "No provisioning profile found and no account provided, aborting." >&2
         exit 1
     fi
-    if [ -z "$USER_BUNDLE_ID" ]; then
+    if [ -z "$user_bundle_id" ]; then
         echo "Account found but no app bundle id provided, aborting." >&2
         exit 1
     fi
@@ -78,7 +78,7 @@ if [ ! -f "prov.mobileprovision" ]; then
         elif osascript login3.applescript >/dev/null 2>&1; then
             echo "Logged in!"
             break
-        elif [ $code_entered -eq 0 ] && $CURL -H "Authorization: Bearer $SECRET_KEY" "$SECRET_URL/jobs/$JOB_ID/2fa" -o account_2fa.txt; then
+        elif [ $code_entered -eq 0 ] && $curl -H "Authorization: Bearer $SECRET_KEY" "$SECRET_URL/jobs/$job_id/2fa" -o account_2fa.txt; then
             echo "Entering 2FA code..."
             ACCOUNT_2FA="$(cat account_2fa.txt)"
             export ACCOUNT_2FA
@@ -91,8 +91,8 @@ if [ ! -f "prov.mobileprovision" ]; then
 
     killall Xcode
 
-    sed -i "" -e "s/BUNDLE_ID_HERE_V9KP12/$USER_BUNDLE_ID/g" SimpleApp/SimpleApp.xcodeproj/project.pbxproj
-    sed -i "" -e "s/DEV_TEAM_HERE_J8HK5C/$TEAM_ID/g" SimpleApp/SimpleApp.xcodeproj/project.pbxproj
+    sed -i "" -e "s/BUNDLE_ID_HERE_V9KP12/$user_bundle_id/g" SimpleApp/SimpleApp.xcodeproj/project.pbxproj
+    sed -i "" -e "s/DEV_TEAM_HERE_J8HK5C/$team_id/g" SimpleApp/SimpleApp.xcodeproj/project.pbxproj
     open -a "/Applications/Xcode.app" SimpleApp/SimpleApp.xcodeproj
 
     echo "Waiting for provisioning profile to appear..."
@@ -117,9 +117,9 @@ fi
 
 echo "Signing..."
 # shellcheck disable=SC2086
-./xresign.sh -i unsigned.ipa -c "$IDENTITY" -p "prov.mobileprovision" $SIGN_ARGS
+./xresign.sh -i unsigned.ipa -c "$identity" -p "prov.mobileprovision" $sign_args
 mv unsigned-xresign.ipa file.ipa
 rm unsigned.ipa
 
 echo "Uploading..."
-$CURL -S -H "Authorization: Bearer $SECRET_KEY" -F "file=@file.ipa" -F "bundle_id=$(cat bundle_id.txt)" "$SECRET_URL/jobs/$JOB_ID/signed"
+$curl -S -H "Authorization: Bearer $SECRET_KEY" -F "file=@file.ipa" -F "bundle_id=$(cat bundle_id.txt)" "$SECRET_URL/jobs/$job_id/signed"
