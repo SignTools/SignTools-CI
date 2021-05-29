@@ -150,8 +150,9 @@ while IFS='' read -r line || [[ -n "$line" ]]; do
             echo "Setting entitlements app ID to $team_id.$bundle_id"
             /usr/libexec/PlistBuddy -c "Set :application-identifier $team_id.$bundle_id" "$entitlements_plist"
         else
-            echo "WARNING: Provisioning profile's app ID $app_id doesn't match component's bundle ID $team_id.$bundle_id" >&2
-            echo "Leaving original entitlements app ID - the app will run, but all entitlements will be broken!" >&2
+            printf '%s\n' \
+                "WARNING: Provisioning profile's app ID $app_id doesn't match component's bundle ID $team_id.$bundle_id" \
+                "Leaving original entitlements app ID - the app will run, but all entitlements will be broken!" >&2
         fi
 
         if [[ "$line" == *".app" ]]; then

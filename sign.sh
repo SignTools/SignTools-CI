@@ -87,8 +87,9 @@ if [ ! -f "prov.mobileprovision" ]; then
     export ACCOUNT_NAME ACCOUNT_PASS
     osascript login1.applescript
 
-    echo "Logging in (2/2)..."
-    echo "If you receive a two-factor authentication (2FA) code, please submit it to the web service."
+    printf '%s\n' \
+        "Logging in (2/2)..." \
+        "If you receive a two-factor authentication (2FA) code, please submit it to the web service."
     i=0
     code_entered=0
     while true; do
@@ -119,10 +120,11 @@ if [ ! -f "prov.mobileprovision" ]; then
     i=0
     while true; do
         if [ $i -gt 15 ]; then
-            echo "Operation timed out. Possible reasons:" >&2
-            echo "- You haven't registered your device's UDID with the developer account" >&2
-            echo "- You used an invalid or already existing bundle id" >&2
-            echo "- You exceeded the 10 app ids per 7 days limit on free accounts" >&2
+            printf '%s\n' \
+                "Operation timed out. Possible reasons:" \
+                "- You haven't registered your device's UDID with the developer account" \
+                "- You used an invalid or already existing bundle id" \
+                "- You exceeded the 10 app ids per 7 days limit on free accounts" >&2
             exit 1
         elif ls "$HOME/Library/MobileDevice/Provisioning Profiles/"* >/dev/null 2>&1; then
             break
