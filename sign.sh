@@ -27,8 +27,8 @@ sign_args=$(cat args.txt)
 job_id=$(cat id.txt)
 user_bundle_id=$(cat user_bundle_id.txt)
 team_id=$(cat team_id.txt)
-keychain_id=$(hexdump -n 8 -v -e '/1 "%02X"' /dev/urandom)
-keychain_id="ios-signer-$keychain_id"
+keychain_name=$(hexdump -n 8 -v -e '/1 "%02X"' /dev/urandom)
+keychain_name="ios-signer-$keychain_name"
 
 echo "Preparing for start..."
 function cleanup() {
@@ -41,25 +41,25 @@ function cleanup() {
         $curl -S -H "Authorization: Bearer $SECRET_KEY" "$SECRET_URL/jobs/$job_id/fail"
     fi
     echo "Cleaning up..."
-    # remove the $keychain_id entry from the keychain list, using its short name to match the full path
+    # remove the $keychain_name entry from the keychain list, using its short name to match the full path
     # TODO: could there be a race condition between multiple instances of this script?
     # shellcheck disable=SC2001
     # shellcheck disable=SC2046
-    eval security list-keychains -d user -s $(security list-keychains -d user | sed "s/\".*$keychain_id.*\"//")
-    security delete-keychain "$keychain_id"
+    eval security list-keychains -d user -s $(security list-keychains -d user | sed "s/\".*$keychain_name.*\"//")
+    security delete-keychain "$keychain_name"
 }
 trap cleanup SIGINT SIGTERM EXIT
 
 echo "Creating keychain..."
-security create-keychain -p "1234" "$keychain_id"
-security unlock-keychain -p "1234" "$keychain_id"
+security create-keychain -p "1234" "$keychain_name"
+security unlock-keychain -p "1234" "$keychain_name"
 # shellcheck disable=SC2046
-eval security list-keychains -d user -s $(security list-keychains -d user) "$keychain_id"
+eval security list-keychains -d user -s $(security list-keychains -d user) "$keychain_name"
 
 echo "Importing certificate..."
-security import "cert.p12" -P "$cert_pass" -A -k "$keychain_id"
-security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "1234" "$keychain_id" >/dev/null
-identity=$(security find-identity -p appleID -v "$keychain_id" | head -n 1 | grep -o '".*"' | cut -d '"' -f 2)
+security import "cert.p12" -P "$cert_pass" -A -k "$keychain_name"
+security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "1234" "$keychain_name" >/dev/null
+identity=$(security find-identity -p appleID -v "$keychain_name" | head -n 1 | grep -o '".*"' | cut -d '"' -f 2)
 if [ -z "$identity" ]; then
     echo "No valid code signing certificate found, aborting." >&2
     exit 1
