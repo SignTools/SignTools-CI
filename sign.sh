@@ -41,6 +41,9 @@ function cleanup() {
         $curl -S -H "Authorization: Bearer $SECRET_KEY" "$SECRET_URL/jobs/$job_id/fail"
     fi
     echo "Cleaning up..."
+    if [[ -n "${default_keychain+x}" ]]; then
+        security default-keychain -s "$default_keychain"
+    fi
     # remove the $keychain_name entry from the keychain list, using its short name to match the full path
     # TODO: could there be a race condition between multiple instances of this script?
     # shellcheck disable=SC2001
@@ -77,6 +80,9 @@ if [ ! -f "prov.mobileprovision" ]; then
 
     killall Xcode >/dev/null 2>&1 || true
     rm "$HOME/Library/MobileDevice/Provisioning Profiles/"* >/dev/null 2>&1 || true
+
+    default_keychain=$(security default-keychain | cut -d '"' -f 2)
+    security default-keychain -s "$keychain_name"
 
     echo "Logging in (1/2)..."
     echo >dummy.developerprofile
