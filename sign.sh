@@ -85,9 +85,7 @@ if [ ! -f "prov.mobileprovision" ]; then
     security default-keychain -s "$keychain_name"
 
     echo "Logging in (1/2)..."
-    echo >dummy.developerprofile
-    # force Xcode to open the Accounts screen
-    open -a "/Applications/Xcode.app" dummy.developerprofile
+    open "/Applications/Xcode.app"
     ACCOUNT_NAME=$(cat account_name.txt)
     ACCOUNT_PASS=$(cat account_pass.txt)
     export ACCOUNT_NAME ACCOUNT_PASS
@@ -115,6 +113,11 @@ if [ ! -f "prov.mobileprovision" ]; then
         sleep 1
         ((i++))
     done
+
+    if ! osascript login4.applescript; then
+        echo "Certificate is revoked. Please provide a new one." >&2
+        exit 1
+    fi
 
     killall Xcode
 
