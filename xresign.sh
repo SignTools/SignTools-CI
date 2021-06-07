@@ -73,16 +73,20 @@ else
     unzip -qo "$source_ipa" -d "$app_dir"
 fi
 
-app_name=$(ls "$app_dir/Payload/")
-check_empty "$app_name" "No payload inside app"
+app_payloads=("$app_dir/Payload/"*)
+app_payload=${app_payloads[0]}
+if [ ! -d "$app_payload" ]; then
+    echo "No payload inside app" 2>/dev/null
+    exit 1
+fi
 
 echo "Using user-provided provisioning profile"
-cp "$mobile_prov" "$app_dir/Payload/$app_name/embedded.mobileprovision"
+cp "$mobile_prov" "$app_payload/embedded.mobileprovision"
 
 echo "Extracting entitlements from provisioning profile"
 provisioning_plist="$tmp_dir/provisioning.plist"
 user_entitlements_plist="$tmp_dir/entitlements.plist"
-security cms -D -i "$app_dir/Payload/$app_name/embedded.mobileprovision" >"$provisioning_plist"
+security cms -D -i "$app_payload/embedded.mobileprovision" >"$provisioning_plist"
 /usr/libexec/PlistBuddy -x -c 'Print:Entitlements' "$provisioning_plist" >"$user_entitlements_plist"
 
 /usr/libexec/PlistBuddy -c "Delete :get-task-allow" "$user_entitlements_plist" || true
@@ -108,7 +112,7 @@ if [[ -n "${align_app_id+x}" ]]; then
 fi
 
 echo "Building list of app components"
-components=$(find -d "$app_dir" \( -name "*.app" -o -name "*.appex" -o -name "*.framework" -o -name "*.dylib" \))
+components=$(find "$app_payload" -depth \( -name "*.app" -o -name "*.appex" -o -name "*.framework" -o -name "*.dylib" \))
 
 var=$((0))
 while IFS='' read -r line || [[ -n "$line" ]]; do
