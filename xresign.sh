@@ -76,7 +76,7 @@ fi
 app_payloads=("$app_dir/Payload/"*)
 app_payload=${app_payloads[0]}
 if [ ! -d "$app_payload" ]; then
-    echo "No payload inside app" 2>/dev/null
+    echo "No payload inside app" >&2
     exit 1
 fi
 
