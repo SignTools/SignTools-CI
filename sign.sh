@@ -56,6 +56,7 @@ trap cleanup SIGINT SIGTERM EXIT
 echo "Creating keychain..."
 security create-keychain -p "1234" "$keychain_name"
 security unlock-keychain -p "1234" "$keychain_name"
+security set-keychain-settings "$keychain_name"
 # shellcheck disable=SC2046
 eval security list-keychains -d user -s $(security list-keychains -d user) "$keychain_name"
 
