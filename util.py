@@ -52,8 +52,8 @@ def gen_id(bundle_id: str, seed: str):
     return result
 
 
-def kill_procs(name: str, check: bool = True):
-    return run_process("killall", name, check=check)
+def kill_xcode(check: bool):
+    return run_process("killall", "Xcode", check=check)
 
 
 def get_prov_profiles():
@@ -61,8 +61,11 @@ def get_prov_profiles():
     return prov_profiles_path.glob("*.mobileprovision")
 
 
-def open_macos(f: Path):
-    return run_process("open", str(f))
+def open_xcode(project: Optional[Path] = None):
+    if project:
+        return run_process("open", "-a", "/Applications/Xcode.app", str(project))
+    else:
+        return run_process("open", "/Applications/Xcode.app")
 
 
 def debug():
