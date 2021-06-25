@@ -82,7 +82,6 @@ def xcode_archive(project_dir: Path, scheme_name: str, archive: Path):
         str(project_dir.resolve()),
         "-scheme",
         scheme_name,
-        "clean",
         "archive",
         "-archivePath",
         str(archive.resolve()),
