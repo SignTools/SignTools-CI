@@ -201,6 +201,7 @@ def sign(opts: SignOpts):
             #   com.apple.developer.icloud-services = *
             # Ideally, all such cases should be manually replaced.
             dump_prov_entitlements_plist(embedded_prov, entitlements_plist)
+            plist_buddy(f"Set :application-identifier {opts.team_id}.{bundle_id}", entitlements_plist)
         else:
             with tempfile.TemporaryDirectory() as tmpdir_str:
                 tmpdir = Path(tmpdir_str)
