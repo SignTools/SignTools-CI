@@ -1,19 +1,20 @@
 version: v1.0
-name: CI
+name: Test MyApp
 agent:
   machine:
-    type: a1-standard-4
-    os_image: macos-xcode12
-execution_time_limit:
-  minutes: 15
+    type: e1-standard-2
+    os_image: ubuntu1804
 
 blocks:
-  - name: Sign
+  - name: Test
     task:
       jobs:
-        - name: Sign
+        - name: Test
           commands:
             - checkout
-            - ./sign.sh
-      secrets:
-        - name: ios-signer
+            - sem-version node 12
+            - cache restore
+            - npm install
+            - cache store
+            - npm run build --if-present
+            - npm test
