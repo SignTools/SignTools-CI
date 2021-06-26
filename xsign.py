@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from subprocess import PIPE, Popen
+from subprocess import PIPE, Popen, TimeoutExpired
 import tempfile
 import shutil
 from typing import Dict, Optional, NamedTuple
@@ -10,6 +10,7 @@ import re
 import os
 from util import *
 import argparse
+import time
 
 
 def plist_buddy(args: str, plist: Path, check: bool = True, xml: bool = False):
@@ -75,18 +76,39 @@ adhoc_options_plist = """<?xml version="1.0" encoding="UTF-8"?>
 
 
 def xcode_archive(project_dir: Path, scheme_name: str, archive: Path):
-    return run_process(
-        "xcodebuild",
-        "-allowProvisioningUpdates",
-        "-project",
-        str(project_dir.resolve()),
-        "-scheme",
-        scheme_name,
-        "archive",
-        "-archivePath",
-        str(archive.resolve()),
-        timeout=30,
-    )
+    # Xcode needs to be open to "cure" hanging issues
+    open_xcode(project_dir)
+    try:
+        _xcode_archive(project_dir, scheme_name, archive)
+    finally:
+        kill_xcode(True)
+
+
+def _xcode_archive(project_dir: Path, scheme_name: str, archive: Path):
+    start_time = time.time()
+    last_error: Optional[Exception] = None
+    while time.time() - start_time < 90:
+        try:
+            return run_process(
+                "xcodebuild",
+                "-allowProvisioningUpdates",
+                "-project",
+                str(project_dir.resolve()),
+                "-scheme",
+                scheme_name,
+                "clean",
+                "archive",
+                "-archivePath",
+                str(archive.resolve()),
+                timeout=20,
+            )
+        except Exception as e:
+            if isinstance(e.__cause__, TimeoutExpired):
+                last_error = e
+                print("xcode_archive timed out, retrying")
+            else:
+                raise e
+    raise Exception("xcode_archive timed out too many times") from last_error
 
 
 def xcode_export(project_dir: Path, export_dir: Path):
