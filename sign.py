@@ -12,6 +12,7 @@ import sys
 
 secret_url = os.path.expandvars("$SECRET_URL").strip().rstrip("/")
 secret_key = os.path.expandvars("$SECRET_KEY")
+old_keychain: Optional[str] = None
 
 
 def curl_with_auth(
@@ -217,7 +218,6 @@ if __name__ == "__main__":
         user_bundle_id = None
     team_id = read_file("team_id.txt")
     keychain_name = "ios-signer-" + rand_str(8)
-    old_keychain: Optional[str] = None
 
     try:
         run()
