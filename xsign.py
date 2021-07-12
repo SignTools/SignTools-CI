@@ -178,7 +178,8 @@ def sign(opts: SignOpts):
             with tempfile.TemporaryDirectory() as tmpdir_str:
                 entitlements_plist = Path(tmpdir_str).joinpath("entitlements.plist")
                 dump_prov_entitlements_plist(opts.prov_file, entitlements_plist)
-                main_bundle_id = plist_buddy("Print :application-identifier", entitlements_plist)
+                prov_app_id = plist_buddy("Print :application-identifier", entitlements_plist)
+                main_bundle_id = prov_app_id[prov_app_id.find(".") + 1 :]
                 if "*" in main_bundle_id:
                     print("Provisioning profile is wildcard, using original bundle id")
                     main_bundle_id = old_main_bundle_id
