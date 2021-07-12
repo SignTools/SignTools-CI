@@ -223,7 +223,17 @@ def sign(opts: SignOpts):
             #   com.apple.developer.icloud-services = *
             # Ideally, all such cases should be manually replaced.
             dump_prov_entitlements_plist(embedded_prov, entitlements_plist)
-            plist_buddy(f"Set :application-identifier {opts.team_id}.{bundle_id}", entitlements_plist)
+
+            prov_app_id = plist_buddy("Print :application-identifier", entitlements_plist)
+            component_app_id = f"{opts.team_id}.{bundle_id}"
+            if prov_app_id == component_app_id or "*" in prov_app_id:
+                plist_buddy(f"Set :application-identifier {component_app_id}", entitlements_plist)
+            else:
+                print(
+                    f"WARNING: Provisioning profile's app id '{prov_app_id}' does not match component's app id '{component_app_id}'.",
+                    "Using provisioning profile's app id - the component will run, but its entitlements will be broken!",
+                    sep="\n",
+                )
         else:
             with tempfile.TemporaryDirectory() as tmpdir_str:
                 tmpdir = Path(tmpdir_str)
