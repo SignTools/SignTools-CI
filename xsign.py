@@ -5,7 +5,7 @@ from pathlib import Path
 from subprocess import PIPE, Popen, TimeoutExpired
 import tempfile
 import shutil
-from typing import Dict, Optional, NamedTuple
+from typing import Dict, Optional, NamedTuple, Set
 import re
 import os
 from util import *
@@ -248,14 +248,19 @@ def sign(opts: SignOpts):
                         s = plist_base
                     f.write(s)
 
-                old_team_id: Optional[str] = None
+                old_team_ids: Set[str] = set()
                 try:
-                    old_team_id = plist_buddy(
-                        "Print :com.apple.developer.team-identifier",
-                        xcode_entitlements_plist,
+                    old_team_ids.add(
+                        plist_buddy("Print :com.apple.developer.team-identifier", xcode_entitlements_plist)
                     )
                 except:
-                    print("Failed to read old team id, skipping")
+                    print("Failed to read old team id from com.apple.developer.team-identifier")
+                try:
+                    old_team_ids.add(
+                        plist_buddy("Print :application-identifier", xcode_entitlements_plist).split(".")[0]
+                    )
+                except:
+                    print("Failed to read old team id from application-identifier")
 
                 print("Original entitlements:", read_file(xcode_entitlements_plist), sep="\n")
 
@@ -341,7 +346,7 @@ def sign(opts: SignOpts):
                         )
                         patches[prefix + remap_id] = prefix + mappings[remap_id]
 
-                if old_team_id:
+                for old_team_id in old_team_ids:
                     patches[old_team_id] = opts.team_id
                 patches[old_bundle_id] = bundle_id
                 patches[old_main_bundle_id] = main_bundle_id
