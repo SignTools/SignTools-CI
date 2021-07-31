@@ -29,21 +29,23 @@ def plist_buddy(args: str, plist: Path, check: bool = True, xml: bool = False):
 
 
 def codesign(identity: str, component: Path, entitlements: Optional[Path] = None):
-    cmd = ["/usr/bin/codesign", "--continue", "-f", "-s", identity]
+    cmd = ["/usr/bin/codesign", "--continue", "-f", "--no-strict", "-s", identity]
     if entitlements:
         cmd.extend(["--entitlements", str(entitlements)])
     return run_process(*cmd, str(component))
 
 
 def codesign_async(identity: str, component: Path, entitlements: Optional[Path] = None):
-    cmd = ["/usr/bin/codesign", "--continue", "-f", "-s", identity]
+    cmd = ["/usr/bin/codesign", "--continue", "-f", "--no-strict", "-s", identity]
     if entitlements:
         cmd.extend(["--entitlements", str(entitlements)])
     return subprocess.Popen([*cmd, str(component)], stdout=PIPE, stderr=PIPE)
 
 
 def codesign_dump_entitlements(component: Path):
-    return decode_clean(run_process("/usr/bin/codesign", "-d", "--entitlements", ":-", str(component)).stdout)
+    return decode_clean(
+        run_process("/usr/bin/codesign", "--no-strict", "-d", "--entitlements", ":-", str(component)).stdout
+    )
 
 
 def binary_replace(pattern: str, f: Path):
