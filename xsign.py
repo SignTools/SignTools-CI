@@ -427,6 +427,12 @@ def sign(opts: SignOpts):
             jobs.pop(path)
 
         print("Processing")
+
+        sc_info = component.joinpath("SC_Info")
+        if sc_info.exists():
+            print(f"Removing leftover AppStore data")
+            shutil.rmtree(sc_info)
+
         if component.suffix in [".appex", ".app"]:
             jobs[component] = sign_primary(component)
         else:
