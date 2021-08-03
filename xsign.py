@@ -291,6 +291,9 @@ def sign(opts: SignOpts):
                     "com.apple.developer.carplay-messaging",
                     # https://stackoverflow.com/questions/62726152/provisioning-profile-doesnt-include-the-com-apple-developer-pushkit-unrestricte
                     "com.apple.developer.pushkit.unrestricted-voip",
+                    # TODO: possible, but requires more complex parent-child app component relationship
+                    # https://developer.apple.com/documentation/app_clips
+                    "com.apple.developer.associated-appclip-app-identifiers",
                 ]:
                     plist_buddy(
                         f"Delete :{item}",
