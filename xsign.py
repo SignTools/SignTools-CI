@@ -2,10 +2,10 @@
 from __future__ import annotations
 
 from pathlib import Path
-from subprocess import PIPE, Popen, TimeoutExpired
+from subprocess import CompletedProcess, PIPE, Popen, TimeoutExpired
 import tempfile
 import shutil
-from typing import Dict, Optional, NamedTuple, Set
+from typing import Callable, Dict, Optional, NamedTuple, Set
 import re
 import os
 from util import *
@@ -71,51 +71,63 @@ adhoc_options_plist = """<?xml version="1.0" encoding="UTF-8"?>
 	<key>method</key>
 	<string>ad-hoc</string>
 	<key>iCloudContainerEnvironment</key>
-	<string>Distribution</string>
+	<string>Production</string>
 </dict>
 </plist>
 """
+
+
+def exec_retry(name: str, func: Callable[[], CompletedProcess[bytes]]):
+    start_time = time.time()
+    last_error: Optional[Exception] = None
+    while time.time() - start_time < 90:
+        try:
+            return func()
+        except Exception as e:
+            if isinstance(e.__cause__, TimeoutExpired):
+                last_error = e
+                print(f"{name} timed out, retrying")
+            else:
+                raise e
+    raise Exception(f"{name} timed out too many times") from last_error
 
 
 def xcode_archive(project_dir: Path, scheme_name: str, archive: Path):
     # Xcode needs to be open to "cure" hanging issues
     open_xcode(project_dir)
     try:
-        _xcode_archive(project_dir, scheme_name, archive)
+        return exec_retry("xcode_archive", lambda: _xcode_archive(project_dir, scheme_name, archive))
     finally:
         kill_xcode(True)
 
 
 def _xcode_archive(project_dir: Path, scheme_name: str, archive: Path):
-    start_time = time.time()
-    last_error: Optional[Exception] = None
-    while time.time() - start_time < 90:
-        try:
-            return run_process(
-                "xcodebuild",
-                "-allowProvisioningUpdates",
-                "-project",
-                str(project_dir.resolve()),
-                "-scheme",
-                scheme_name,
-                "clean",
-                "archive",
-                "-archivePath",
-                str(archive.resolve()),
-                timeout=20,
-            )
-        except Exception as e:
-            if isinstance(e.__cause__, TimeoutExpired):
-                last_error = e
-                print("xcode_archive timed out, retrying")
-            else:
-                raise e
-    raise Exception("xcode_archive timed out too many times") from last_error
+    return run_process(
+        "xcodebuild",
+        "-allowProvisioningUpdates",
+        "-project",
+        str(project_dir.resolve()),
+        "-scheme",
+        scheme_name,
+        "clean",
+        "archive",
+        "-archivePath",
+        str(archive.resolve()),
+        timeout=20,
+    )
 
 
-def xcode_export(project_dir: Path, export_dir: Path):
+def xcode_export(project_dir: Path, archive: Path, export_dir: Path):
+    # Xcode needs to be open to "cure" hanging issues
+    open_xcode(project_dir)
+    try:
+        return exec_retry("xcode_export", lambda: _xcode_export(project_dir, archive, export_dir))
+    finally:
+        kill_xcode(True)
+
+
+def _xcode_export(project_dir: Path, archive: Path, export_dir: Path):
     options_plist = export_dir.joinpath("options.plist")
-    archive = export_dir.joinpath("archive.xcarchive")
     with open(options_plist, "w") as f:
         f.write(adhoc_options_plist)
     return run_process(
@@ -130,7 +142,7 @@ def xcode_export(project_dir: Path, export_dir: Path):
         str(export_dir.resolve()),
         "-exportOptionsPlist",
         str(options_plist.resolve()),
-        timeout=30,
+        timeout=20,
     )
 
 
@@ -165,11 +177,14 @@ class SignOpts(NamedTuple):
     patch_debug: bool
     patch_all_devices: bool
     patch_file_sharing: bool
+    encode_ids: bool
+    force_original_id: bool
 
 
 def sign(opts: SignOpts):
     main_app = next(opts.app_dir.glob("Payload/*.app"))
     old_main_bundle_id = plist_buddy("Print :CFBundleIdentifier", main_app.joinpath("Info.plist"))
+    is_distribution = "Distribution" in opts.common_name
 
     if opts.prov_file:
         if opts.bundle_id is None:
@@ -190,13 +205,21 @@ def sign(opts: SignOpts):
             main_bundle_id = opts.bundle_id
     else:
         if opts.bundle_id:
+            print("Using custom bundle id")
             main_bundle_id = opts.bundle_id
-        else:
+        elif opts.encode_ids:
+            print("Using encoded original bundle id")
             seed = old_main_bundle_id + opts.team_id
             main_bundle_id = gen_id(old_main_bundle_id, seed)
+        else:
+            print("Using original bundle id")
+            main_bundle_id = old_main_bundle_id
 
     with open("bundle_id.txt", "w") as f:
-        f.write(main_bundle_id)
+        if opts.force_original_id:
+            f.write(old_main_bundle_id)
+        else:
+            f.write(main_bundle_id)
 
     component_exts = ["*.app", "*.appex", "*.framework", "*.dylib"]
     # make sure components are ordered depth-first, otherwise signing will overlap and become invalid
@@ -328,11 +351,14 @@ def sign(opts: SignOpts):
                     remap_ids = [remap_id.strip()[len(prefix) :] for remap_id in remap_ids.splitlines()[1:-1]]
                     for remap_id in remap_ids:
                         if remap_id not in mappings:
-                            if opts.bundle_id:
-                                seed = opts.bundle_id
+                            if opts.encode_ids:
+                                if opts.bundle_id:
+                                    seed = opts.bundle_id
+                                else:
+                                    seed = remap_id + opts.team_id
+                                mappings[remap_id] = gen_id(remap_id, seed)
                             else:
-                                seed = remap_id + opts.team_id
-                            mappings[remap_id] = gen_id(remap_id, seed)
+                                mappings[remap_id] = remap_id
 
                     plist_buddy(
                         "Delete :" + entitlement,
@@ -357,7 +383,7 @@ def sign(opts: SignOpts):
                 patches[old_main_bundle_id] = main_bundle_id
 
                 print("Applying patches...")
-                for target in [xcode_entitlements_plist, component_bin, info_plist]:
+                for target in [xcode_entitlements_plist, component_bin]:
                     for old, new in patches.items():
                         binary_replace(f"s/{re.escape(old)}/{re.escape(new)}/g", target)
 
@@ -372,19 +398,32 @@ def sign(opts: SignOpts):
                     os.remove(prov_profile)
 
                 print("Obtaining provisioning profile...")
+                print("Archiving app...")
                 archive = simple_app_dir.joinpath("archive.xcarchive")
                 xcode_archive(simple_app_proj, "SimpleApp", archive)
-                archive_bin = archive.joinpath("Products/Applications/SimpleApp.app")
+                if is_distribution:
+                    print("Exporting app...")
+                    for prov_profile in get_prov_profiles():
+                        os.remove(prov_profile)
+                    xcode_export(simple_app_proj, archive, simple_app_dir)
+                    exported_ipa = simple_app_dir.joinpath("SimpleApp.ipa")
+                    extract_zip(exported_ipa, simple_app_dir)
+                    output_bin = simple_app_dir.joinpath("Payload/SimpleApp.app")
+                else:
+                    output_bin = archive.joinpath("Products/Applications/SimpleApp.app")
 
                 prov_profiles = list(get_prov_profiles())
                 shutil.move(str(prov_profiles[0]), embedded_prov)
                 for prov_profile in prov_profiles[1:]:
                     os.remove(prov_profile)
                 with open(entitlements_plist, "w") as f:
-                    f.write(codesign_dump_entitlements(archive_bin))
+                    f.write(codesign_dump_entitlements(output_bin))
 
-        print(f"Setting bundle ID to {bundle_id}")
-        plist_buddy(f"Set :CFBundleIdentifier {bundle_id}", info_plist)
+        if opts.force_original_id:
+            print("Keeping original CFBundleIdentifier")
+        else:
+            print(f"Setting CFBundleIdentifier to {bundle_id}")
+            plist_buddy(f"Set :CFBundleIdentifier {bundle_id}", info_plist)
 
         plist_buddy("Delete :get-task-allow", entitlements_plist, check=False)
         if opts.patch_debug:
@@ -406,6 +445,8 @@ def sign(opts: SignOpts):
             print("Force enabling file sharing")
             plist_buddy("Delete :UIFileSharingEnabled", info_plist, check=False)
             plist_buddy("Add :UIFileSharingEnabled bool true", info_plist)
+            plist_buddy("Delete :UISupportsDocumentBrowser", info_plist, check=False)
+            plist_buddy("Add :UISupportsDocumentBrowser bool true", info_plist)
 
         print("Signing with entitlements:", read_file(entitlements_plist), sep="\n")
         return codesign_async(opts.common_name, component, entitlements_plist)
@@ -498,7 +539,23 @@ def parse_args():
         dest="patch_file_sharing",
         type=bool,
         default=False,
-        help="Patch the app to enable file sharing through iTunes",
+        help="Patch the app to enable file sharing",
+    )
+    parser.add_argument(
+        "-e",
+        "--encode-ids",
+        dest="encode_ids",
+        type=bool,
+        default=False,
+        help="Encode original IDs to unique IDs for developer accounts",
+    )
+    parser.add_argument(
+        "-o",
+        "--force-original-id",
+        dest="force_original_id",
+        type=bool,
+        default=False,
+        help="Force the original bundle ID",
     )
     return parser.parse_args()
 

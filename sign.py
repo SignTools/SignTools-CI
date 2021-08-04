@@ -6,7 +6,6 @@ import re
 import time
 import tempfile
 import xsign
-import shutil
 import traceback
 import sys
 
@@ -55,7 +54,7 @@ def security_remove_keychain(keychain: str):
     run_process("security", "delete-keychain", keychain)
 
 
-def security_import(cert: Path, cert_pass: str, keychain: str) -> str:
+def security_import(cert: Path, cert_pass: str, keychain: str) -> List[str]:
     password = "1234"
     keychains = [*security_get_keychain_list(), keychain]
     run_process("security", "create-keychain", "-p", password, keychain),
@@ -70,7 +69,7 @@ def security_import(cert: Path, cert_pass: str, keychain: str) -> str:
         keychain,
     ),
     identity: str = decode_clean(run_process("security", "find-identity", "-p", "appleID", "-v", keychain).stdout)
-    return re.findall('".*"', identity)[0].strip('"')
+    return [line.strip('"') for line in re.findall('".*"', identity)]
 
 
 def osascript(
@@ -80,13 +79,6 @@ def osascript(
     timeout: Optional[float] = None,
 ):
     return run_process("osascript", str(script), env=env, check=check, timeout=timeout)
-
-
-def extract_zip(archive: Path, dest_dir: Path):
-    if shutil.which("7z"):
-        return run_process("7z", "x", str(archive), "-o" + str(dest_dir))
-    else:
-        return run_process("unzip", "-o", str(archive), "-d", str(dest_dir))
 
 
 def extract_tar(archive: Path, dest_dir: Path):
@@ -158,9 +150,14 @@ def setup_account(account_name_file: Path, account_pass_file: Path):
 
 def run():
     print("Creating keychain...")
-    common_name = security_import(Path("cert.p12"), cert_pass, keychain_name)
-    if not common_name:
+    common_names = security_import(Path("cert.p12"), cert_pass, keychain_name)
+    if len(common_names) < 1:
         raise Exception("No valid code signing certificate found, aborting.")
+    common_name = common_names[0]
+    for name in common_names:
+        if "Distribution" in name:
+            print("Using distribution certificate")
+            common_name = name
 
     prov_profile = Path("prov.mobileprovision")
     account_name_file = Path("account_name.txt")
@@ -188,6 +185,8 @@ def run():
                 "-d" in sign_args,
                 "-a" in sign_args,
                 "-s" in sign_args,
+                "-e" in sign_args,
+                "-o" in sign_args,
             )
         )
 

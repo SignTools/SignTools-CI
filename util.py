@@ -1,4 +1,5 @@
 from pathlib import Path
+import shutil
 import subprocess
 import random
 import string
@@ -75,3 +76,10 @@ def debug():
 def read_file(file_path: StrPath):
     with open(file_path) as f:
         return f.read()
+
+
+def extract_zip(archive: Path, dest_dir: Path):
+    if shutil.which("7z"):
+        return run_process("7z", "x", str(archive), "-o" + str(dest_dir))
+    else:
+        return run_process("unzip", "-o", str(archive), "-d", str(dest_dir))
