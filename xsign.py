@@ -190,10 +190,10 @@ def sign(opts: SignOpts):
             main_bundle_id = opts.bundle_id
     else:
         if opts.bundle_id:
-            seed = opts.bundle_id
+            main_bundle_id = opts.bundle_id
         else:
             seed = old_main_bundle_id + opts.team_id
-        main_bundle_id = gen_id(old_main_bundle_id, seed)
+            main_bundle_id = gen_id(old_main_bundle_id, seed)
 
     with open("bundle_id.txt", "w") as f:
         f.write(main_bundle_id)
