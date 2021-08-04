@@ -336,19 +336,43 @@ def sign(opts: SignOpts):
 
                 patches: Dict[str, str] = {}
 
-                for entitlement, prefix in {
-                    "com.apple.security.application-groups": "group.",
-                    "com.apple.developer.icloud-container-identifiers": "iCloud.",
-                    "com.apple.developer.ubiquity-container-identifiers": "iCloud.",
-                }.items():
+                for entitlement, prefix, parents in (
+                    ("com.apple.security.application-groups", "group.", []),
+                    (
+                        "com.apple.developer.icloud-container-identifiers",
+                        "iCloud.",
+                        ["com.apple.developer.icloud-container-environment", "com.apple.developer.icloud-services"],
+                    ),
+                    ("com.apple.developer.ubiquity-container-identifiers", "iCloud.", []),
+                ):
                     try:
                         remap_ids = plist_buddy(
                             "Print :" + entitlement,
                             xcode_entitlements_plist,
                         )
                     except:
-                        continue
+                        remap_ids = ""
+
                     remap_ids = [remap_id.strip()[len(prefix) :] for remap_id in remap_ids.splitlines()[1:-1]]
+                    if len(remap_ids) < 1:
+                        # some features like iCloud only work with Xcode if they have identifiers defined
+                        # make sure such cases are fixed if necessary
+                        for parent in parents:
+                            try:
+                                # check if entitlement exists
+                                plist_buddy(
+                                    "Print :" + parent,
+                                    xcode_entitlements_plist,
+                                )
+                                # add a default identifier
+                                remap_ids.append(bundle_id)
+                                break
+                            except:
+                                continue
+
+                    if len(remap_ids) < 1:
+                        continue
+
                     for remap_id in remap_ids:
                         if remap_id not in mappings:
                             if opts.encode_ids:
