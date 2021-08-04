@@ -178,7 +178,7 @@ def sign(opts: SignOpts):
         elif opts.bundle_id == "":
             print("Using provisioning profile's application id")
             with tempfile.TemporaryDirectory() as tmpdir_str:
-                entitlements_plist = Path(tmpdir_str).joinpath("archived-expanded-entitlements.xcent")
+                entitlements_plist = Path(tmpdir_str).joinpath("entitlements.plist")
                 dump_prov_entitlements_plist(opts.prov_file, entitlements_plist)
                 prov_app_id = plist_buddy("Print :application-identifier", entitlements_plist)
                 main_bundle_id = prov_app_id[prov_app_id.find(".") + 1 :]
@@ -212,7 +212,7 @@ def sign(opts: SignOpts):
 
     def sign_primary(component: Path):
         info_plist = component.joinpath("Info.plist")
-        entitlements_plist = component.joinpath("archived-expanded-entitlements.xcent")
+        entitlements_plist = component.joinpath("entitlements.plist")
         embedded_prov = component.joinpath("embedded.mobileprovision")
         old_bundle_id = plist_buddy("Print :CFBundleIdentifier", info_plist)
         bundle_id = f"{main_bundle_id}{old_bundle_id[len(old_main_bundle_id):]}"
