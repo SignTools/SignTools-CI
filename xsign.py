@@ -9,7 +9,6 @@ from typing import Callable, Dict, Optional, NamedTuple, Set
 import re
 import os
 from util import *
-import argparse
 import time
 
 
@@ -514,90 +513,3 @@ def sign(opts: SignOpts):
     for pipe in jobs.values():
         pipe.wait()
         popen_check(pipe)
-
-
-def parse_args():
-    parser = argparse.ArgumentParser(description="Sign an IPA file.")
-    parser.add_argument(
-        "app_dir",
-        type=str,
-        help="Extracted app directory",
-    )
-    parser.add_argument(
-        "common_name",
-        type=str,
-        help="Code signing identity common name (CN)",
-    )
-    parser.add_argument(
-        "team_id",
-        type=str,
-        help="Code signing identity team ID",
-    )
-    parser.add_argument(
-        "-p",
-        "--provisioning-profile",
-        dest="prov_file",
-        type=str,
-        help="Path to provisioning profile (.mobileprovision)",
-    )
-    parser.add_argument(
-        "-b",
-        "--bundle-id",
-        dest="bundle_id",
-        type=str,
-        help="Custom bundle ID to use for the app. "
-        + "Assign empty string to use the provisioning profile's application ID",
-    )
-    parser.add_argument(
-        "-n",
-        "--bundle-name",
-        dest="bundle_name",
-        type=str,
-        help="Custom bundle name to use for the app.",
-    )
-    parser.add_argument(
-        "-d",
-        "--patch-debug",
-        dest="patch_debug",
-        type=bool,
-        default=False,
-        help="Patch the app to enable debugging ('get-task-allow' entitlement)",
-    )
-    parser.add_argument(
-        "-a",
-        "--patch-all-devices",
-        dest="patch_all_devices",
-        type=bool,
-        default=False,
-        help="Patch the app to enable support for all devices",
-    )
-    parser.add_argument(
-        "-s",
-        "--patch-file-sharing",
-        dest="patch_file_sharing",
-        type=bool,
-        default=False,
-        help="Patch the app to enable file sharing",
-    )
-    parser.add_argument(
-        "-e",
-        "--encode-ids",
-        dest="encode_ids",
-        type=bool,
-        default=False,
-        help="Encode original IDs to unique IDs for developer accounts",
-    )
-    parser.add_argument(
-        "-o",
-        "--force-original-id",
-        dest="force_original_id",
-        type=bool,
-        default=False,
-        help="Force the original bundle ID",
-    )
-    return parser.parse_args()
-
-
-if __name__ == "__main__":
-    args = parse_args()
-    sign(SignOpts(**vars(args)))
