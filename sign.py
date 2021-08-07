@@ -162,6 +162,7 @@ def run():
     prov_profile = Path("prov.mobileprovision")
     account_name_file = Path("account_name.txt")
     account_pass_file = Path("account_pass.txt")
+    bundle_name = Path("bundle_name.txt")
     if account_name_file.is_file() and account_pass_file.is_file():
         setup_account(account_name_file, account_pass_file)
     elif prov_profile.is_file():
@@ -182,6 +183,7 @@ def run():
                 team_id,
                 prov_profile if prov_profile.is_file() else None,
                 "" if "-n" in sign_args else user_bundle_id,
+                read_file(bundle_name) if bundle_name.exists() else None,
                 "-d" in sign_args,
                 "-a" in sign_args,
                 "-s" in sign_args,

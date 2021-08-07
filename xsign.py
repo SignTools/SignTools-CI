@@ -174,6 +174,7 @@ class SignOpts(NamedTuple):
     team_id: str
     prov_file: Optional[Path]
     bundle_id: Optional[str]
+    bundle_name: Optional[str]
     patch_debug: bool
     patch_all_devices: bool
     patch_file_sharing: bool
@@ -183,7 +184,8 @@ class SignOpts(NamedTuple):
 
 def sign(opts: SignOpts):
     main_app = next(opts.app_dir.glob("Payload/*.app"))
-    old_main_bundle_id = plist_buddy("Print :CFBundleIdentifier", main_app.joinpath("Info.plist"))
+    main_info_plist = main_app.joinpath("Info.plist")
+    old_main_bundle_id = plist_buddy("Print :CFBundleIdentifier", main_info_plist)
     is_distribution = "Distribution" in opts.common_name
 
     if opts.prov_file:
@@ -214,6 +216,11 @@ def sign(opts: SignOpts):
         else:
             print("Using original bundle id")
             main_bundle_id = old_main_bundle_id
+
+    if opts.bundle_name:
+        print(f"Setting CFBundleDisplayName to {opts.bundle_name}")
+        plist_buddy(f"Delete :CFBundleDisplayName", main_info_plist, check=False)
+        plist_buddy(f"Add :CFBundleDisplayName string '{opts.bundle_name}'", main_info_plist)
 
     with open("bundle_id.txt", "w") as f:
         if opts.force_original_id:
@@ -540,6 +547,13 @@ def parse_args():
         type=str,
         help="Custom bundle ID to use for the app. "
         + "Assign empty string to use the provisioning profile's application ID",
+    )
+    parser.add_argument(
+        "-n",
+        "--bundle-name",
+        dest="bundle_name",
+        type=str,
+        help="Custom bundle name to use for the app.",
     )
     parser.add_argument(
         "-d",
