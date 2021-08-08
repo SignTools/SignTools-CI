@@ -235,14 +235,15 @@ def sign(opts: SignOpts):
 
     mappings: Dict[str, str] = {}
 
-    def sign_secondary(component: Path):
+    def sign_secondary(component: Path, workdir: Path):
         # entitlements of frameworks, etc. don't matter, so leave them (potentially) invalid
         print("Signing with original entitlements")
         return codesign_async(opts.common_name, component)
 
-    def sign_primary(component: Path):
+    def sign_primary(component: Path, workdir: Path):
         info_plist = component.joinpath("Info.plist")
-        entitlements_plist = component.joinpath("entitlements.plist")
+        with tempfile.NamedTemporaryFile(dir=workdir, suffix=".plist", delete=False) as f:
+            entitlements_plist = Path(f.name)
         embedded_prov = component.joinpath("embedded.mobileprovision")
         old_bundle_id = plist_buddy("Print :CFBundleIdentifier", info_plist)
         bundle_id = f"{main_bundle_id}{old_bundle_id[len(old_main_bundle_id):]}"
@@ -487,35 +488,37 @@ def sign(opts: SignOpts):
         print("Signing with entitlements:", read_file(entitlements_plist), sep="\n")
         return codesign_async(opts.common_name, component, entitlements_plist)
 
-    jobs: Dict[Path, subprocess.Popen[bytes]] = {}
-    for component in components:
-        print(f"Preparing component {component}")
+    with tempfile.TemporaryDirectory() as tmpdir_str:
+        tmpdir = Path(tmpdir_str)
+        jobs: Dict[Path, subprocess.Popen[bytes]] = {}
+        for component in components:
+            print(f"Preparing component {component}")
 
-        for path in list(jobs.keys()):
-            pipe = jobs[path]
-            try:
-                path.relative_to(component)
-            except:
-                continue
-            if pipe.poll() is None:
-                print("Waiting for sub-component to finish signing:", path)
-                pipe.wait()
+            for path in list(jobs.keys()):
+                pipe = jobs[path]
+                try:
+                    path.relative_to(component)
+                except:
+                    continue
+                if pipe.poll() is None:
+                    print("Waiting for sub-component to finish signing:", path)
+                    pipe.wait()
+                popen_check(pipe)
+                jobs.pop(path)
+
+            print("Processing")
+
+            sc_info = component.joinpath("SC_Info")
+            if sc_info.exists():
+                print(f"Removing leftover AppStore data")
+                shutil.rmtree(sc_info)
+
+            if component.suffix in [".appex", ".app"]:
+                jobs[component] = sign_primary(component, tmpdir)
+            else:
+                jobs[component] = sign_secondary(component, tmpdir)
+
+        print("Waiting for any remaining components to finish signing")
+        for pipe in jobs.values():
+            pipe.wait()
             popen_check(pipe)
-            jobs.pop(path)
-
-        print("Processing")
-
-        sc_info = component.joinpath("SC_Info")
-        if sc_info.exists():
-            print(f"Removing leftover AppStore data")
-            shutil.rmtree(sc_info)
-
-        if component.suffix in [".appex", ".app"]:
-            jobs[component] = sign_primary(component)
-        else:
-            jobs[component] = sign_secondary(component)
-
-    print("Waiting for any remaining components to finish signing")
-    for pipe in jobs.values():
-        pipe.wait()
-        popen_check(pipe)
