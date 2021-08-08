@@ -178,6 +178,7 @@ class SignOpts(NamedTuple):
     patch_all_devices: bool
     patch_file_sharing: bool
     encode_ids: bool
+    patch_ids: bool
     force_original_id: bool
 
 
@@ -413,7 +414,12 @@ def sign(opts: SignOpts):
                 patches[old_main_bundle_id] = main_bundle_id
 
                 print("Applying patches...")
-                for target in [xcode_entitlements_plist, component_bin]:
+                targets = [xcode_entitlements_plist]
+                if opts.patch_ids:
+                    targets.append(component_bin)
+                else:
+                    print("Skipping component binary")
+                for target in targets:
                     for old, new in patches.items():
                         binary_replace(f"s/{re.escape(old)}/{re.escape(new)}/g", target)
 

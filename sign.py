@@ -188,6 +188,7 @@ def run():
                 "-a" in sign_args,
                 "-s" in sign_args,
                 "-e" in sign_args,
+                "-p" in sign_args,
                 "-o" in sign_args,
             )
         )
