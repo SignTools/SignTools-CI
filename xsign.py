@@ -418,6 +418,7 @@ def sign(opts: SignOpts):
                 targets = [xcode_entitlements_plist]
                 if opts.patch_ids:
                     targets.append(component_bin)
+                    targets.append(info_plist)
                 else:
                     print("Skipping component binary")
                 for target in targets:
@@ -458,6 +459,7 @@ def sign(opts: SignOpts):
 
         if opts.force_original_id:
             print("Keeping original CFBundleIdentifier")
+            plist_buddy(f"Set :CFBundleIdentifier {old_bundle_id}", info_plist)
         else:
             print(f"Setting CFBundleIdentifier to {bundle_id}")
             plist_buddy(f"Set :CFBundleIdentifier {bundle_id}", info_plist)
