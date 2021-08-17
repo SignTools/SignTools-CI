@@ -64,9 +64,9 @@ def get_prov_profiles():
 
 def open_xcode(project: Optional[Path] = None):
     if project:
-        return run_process("open", "-a", "/Applications/Xcode.app", str(project))
+        return run_process("xed", str(project))
     else:
-        return run_process("open", "/Applications/Xcode.app")
+        return run_process("xed")
 
 
 def debug():
