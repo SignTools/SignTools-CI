@@ -325,6 +325,8 @@ def sign(opts: SignOpts):
                     # TODO: possible, but requires more complex parent-child app component relationship
                     # https://developer.apple.com/documentation/app_clips
                     "com.apple.developer.associated-appclip-app-identifiers",
+                    # special entitlement
+                    "com.apple.developer.coremedia.allow-alternate-video-decoder-selection",
                 ]:
                     plist_buddy(
                         f"Delete :{item}",
