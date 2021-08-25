@@ -212,7 +212,7 @@ def sign(opts: SignOpts):
         elif opts.encode_ids:
             print("Using encoded original bundle id")
             seed = opts.team_id
-            main_bundle_id = gen_id(old_main_bundle_id, seed)
+            main_bundle_id = gen_id(old_main_bundle_id, seed, 1)
         else:
             print("Using original bundle id")
             main_bundle_id = old_main_bundle_id
@@ -346,15 +346,15 @@ def sign(opts: SignOpts):
 
                 patches: Dict[str, str] = {}
 
-                for entitlement, prefix, parents in (
-                    ("com.apple.security.application-groups", "group.", []),
+                for entitlement, skip_parts, parents in (
+                    ("com.apple.security.application-groups", 2, []),  # group.com.test.app
                     (
                         "com.apple.developer.icloud-container-identifiers",
-                        "iCloud.",
+                        2,  # iCloud.com.test.app
                         ["com.apple.developer.icloud-container-environment", "com.apple.developer.icloud-services"],
                     ),
-                    ("com.apple.developer.ubiquity-container-identifiers", "iCloud.", []),
-                    ("keychain-access-groups", "", []),
+                    ("com.apple.developer.ubiquity-container-identifiers", 2, []),  # iCloud.com.test.app
+                    ("keychain-access-groups", 2, []),  # TEAM_ID.com.test.app
                 ):
                     try:
                         remap_ids = plist_buddy(
@@ -364,7 +364,7 @@ def sign(opts: SignOpts):
                     except:
                         remap_ids = ""
 
-                    remap_ids = [remap_id.strip()[len(prefix) :] for remap_id in remap_ids.splitlines()[1:-1]]
+                    remap_ids = [remap_id.strip() for remap_id in remap_ids.splitlines()[1:-1]]
                     if len(remap_ids) < 1:
                         # some features like iCloud only work with Xcode if they have identifiers defined
                         # make sure such cases are fixed if necessary
@@ -388,7 +388,7 @@ def sign(opts: SignOpts):
                         if remap_id not in mappings:
                             if opts.encode_ids:
                                 seed = opts.bundle_id if opts.bundle_id else opts.team_id
-                                mappings[remap_id] = gen_id(remap_id, seed)
+                                mappings[remap_id] = gen_id(remap_id, seed, skip_parts)
                             else:
                                 mappings[remap_id] = remap_id
 
@@ -404,10 +404,10 @@ def sign(opts: SignOpts):
 
                     for i, remap_id in enumerate(remap_ids):
                         plist_buddy(
-                            f"Add :{entitlement}:{i} string '{prefix+mappings[remap_id]}'",
+                            f"Add :{entitlement}:{i} string '{mappings[remap_id]}'",
                             xcode_entitlements_plist,
                         )
-                        patches[prefix + remap_id] = prefix + mappings[remap_id]
+                        patches[remap_id] = mappings[remap_id]
 
                 for old_team_id in old_team_ids:
                     patches[old_team_id] = opts.team_id

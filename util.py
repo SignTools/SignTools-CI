@@ -39,7 +39,7 @@ def rand_str(len: int):
     return result
 
 
-def gen_id(bundle_id: str, seed: str):
+def gen_id(bundle_id: str, seed: str, skip_parts: int):
     """
     Encode the bundle id into a different but constant id that
     has the same length and is unique based on the provided seed.
@@ -47,8 +47,8 @@ def gen_id(bundle_id: str, seed: str):
     old_state = random.getstate()
     random.seed(seed)
     parts = bundle_id.split(".")
-    new_parts = map(lambda x: rand_str(len(x)), parts[1:])
-    result = ".".join([parts[0], *new_parts])
+    new_parts = map(lambda x: rand_str(len(x)), parts[skip_parts:])
+    result = ".".join([*parts[:skip_parts], *new_parts])
     random.setstate(old_state)
     return result
 
