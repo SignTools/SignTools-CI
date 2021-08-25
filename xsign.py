@@ -354,6 +354,7 @@ def sign(opts: SignOpts):
                         ["com.apple.developer.icloud-container-environment", "com.apple.developer.icloud-services"],
                     ),
                     ("com.apple.developer.ubiquity-container-identifiers", "iCloud.", []),
+                    ("keychain-access-groups", "", []),
                 ):
                     try:
                         remap_ids = plist_buddy(
