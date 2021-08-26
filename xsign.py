@@ -315,6 +315,10 @@ def sign(opts: SignOpts):
                     "com.apple.developer.usernotifications.critical-alerts",
                     "com.apple.developer.networking.HotspotHelper",
                     "com.apple.managed.vpn.shared",
+                    # some others
+                    "platform-application",
+                    "com.apple.private.security.no-container",
+                    "com.apple.developer.coremedia.allow-alternate-video-decoder-selection",
                     # only valid in app store distribution
                     # https://developer.apple.com/library/archive/qa/qa1830/_index.html
                     "beta-reports-active",
@@ -325,8 +329,6 @@ def sign(opts: SignOpts):
                     # TODO: possible, but requires more complex parent-child app component relationship
                     # https://developer.apple.com/documentation/app_clips
                     "com.apple.developer.associated-appclip-app-identifiers",
-                    # special entitlement
-                    "com.apple.developer.coremedia.allow-alternate-video-decoder-selection",
                 ]:
                     plist_buddy(
                         f"Delete :{item}",
