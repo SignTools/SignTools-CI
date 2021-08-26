@@ -222,13 +222,18 @@ if __name__ == "__main__":
     keychain_name = "ios-signer-" + rand_str(8)
 
     try:
+        failed = False
         run()
     except:
+        failed = True
         traceback.print_exc()
-        # debug()
+    finally:
+        # if failed:
+        #     debug()
         print("Cleaning up...")
-        curl_with_auth(f"{secret_url}/jobs/{job_id}/fail")
         if old_keychain:
             security_set_default_keychain(old_keychain)
         security_remove_keychain(keychain_name)
-        sys.exit(1)
+        if failed:
+            curl_with_auth(f"{secret_url}/jobs/{job_id}/fail")
+            sys.exit(1)
