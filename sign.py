@@ -228,8 +228,8 @@ if __name__ == "__main__":
         failed = True
         traceback.print_exc()
     finally:
-        # if failed:
-        #     debug()
+        if failed:
+            debug()
         print("Cleaning up...")
         if old_keychain:
             security_set_default_keychain(old_keychain)
