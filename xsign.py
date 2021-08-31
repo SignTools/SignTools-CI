@@ -211,7 +211,7 @@ def sign(opts: SignOpts):
             main_bundle_id = opts.bundle_id
         elif opts.encode_ids:
             print("Using encoded original bundle id")
-            seed = opts.team_id
+            seed = old_main_bundle_id + opts.team_id
             main_bundle_id = gen_id(old_main_bundle_id, seed, 1)
         else:
             print("Using original bundle id")
@@ -389,7 +389,9 @@ def sign(opts: SignOpts):
                     for remap_id in remap_ids:
                         if remap_id not in mappings:
                             if opts.encode_ids:
-                                seed = opts.bundle_id if opts.bundle_id else opts.team_id
+                                seed = remap_id + opts.team_id
+                                if opts.bundle_id:
+                                    seed += opts.bundle_id
                                 mappings[remap_id] = gen_id(remap_id, seed, skip_parts)
                             else:
                                 mappings[remap_id] = remap_id
