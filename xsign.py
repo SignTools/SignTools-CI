@@ -281,19 +281,20 @@ def sign(opts: SignOpts):
                         s = plist_base
                     f.write(s)
 
-                old_team_ids: Set[str] = set()
+                old_team_id = None
                 try:
-                    old_team_ids.add(
-                        plist_buddy("Print :com.apple.developer.team-identifier", xcode_entitlements_plist)
-                    )
+                    old_team_id = plist_buddy("Print :com.apple.developer.team-identifier", xcode_entitlements_plist)
                 except:
-                    print("Failed to read old team id from com.apple.developer.team-identifier")
+                    print("Failed to read old team id")
+                # before 2011 this was known as 'bundle seed id' and could be set freely
+                # now it is always equal to team id
+                old_app_id_prefix = None
                 try:
-                    old_team_ids.add(
-                        plist_buddy("Print :application-identifier", xcode_entitlements_plist).split(".")[0]
-                    )
+                    old_app_id_prefix = plist_buddy("Print :application-identifier", xcode_entitlements_plist).split(
+                        "."
+                    )[0]
                 except:
-                    print("Failed to read old team id from application-identifier")
+                    print("Failed to read old app id prefix")
 
                 print("Original entitlements:", read_file(xcode_entitlements_plist), sep="\n")
 
@@ -413,8 +414,10 @@ def sign(opts: SignOpts):
                         )
                         patches[remap_id] = mappings[remap_id]
 
-                for old_team_id in old_team_ids:
+                if old_team_id:
                     patches[old_team_id] = opts.team_id
+                if old_app_id_prefix:
+                    patches[old_app_id_prefix] = opts.team_id
                 patches[old_bundle_id] = bundle_id
                 patches[old_main_bundle_id] = main_bundle_id
 
