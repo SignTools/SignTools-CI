@@ -421,6 +421,9 @@ def sign(opts: SignOpts):
                 patches[old_bundle_id] = bundle_id
                 patches[old_main_bundle_id] = main_bundle_id
 
+                # sort patches by decreasing length to make sure that there are no overlaps
+                patches = dict(sorted(patches.items(), key=lambda x: len(x[0]), reverse=True))
+
                 print("Applying patches...")
                 targets = [xcode_entitlements_plist]
                 if opts.patch_ids:
