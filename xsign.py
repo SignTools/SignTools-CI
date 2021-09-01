@@ -5,7 +5,7 @@ from pathlib import Path
 from subprocess import CompletedProcess, PIPE, Popen, TimeoutExpired
 import tempfile
 import shutil
-from typing import Callable, Dict, Optional, NamedTuple, Set
+from typing import Callable, Dict, List, Optional, NamedTuple
 import re
 import os
 from util import *
@@ -167,6 +167,14 @@ def popen_check(pipe: Popen[bytes]):
         raise Exception(data)
 
 
+def dump_plist_array(key: str, plist_file: Path) -> List[str]:
+    try:
+        items = plist_buddy("Print " + key, plist_file)
+        return [item.strip() for item in items.splitlines()[1:-1]]
+    except:
+        return []
+
+
 class SignOpts(NamedTuple):
     app_dir: Path
     common_name: str
@@ -242,12 +250,22 @@ def sign(opts: SignOpts):
 
     def sign_primary(component: Path, workdir: Path):
         info_plist = component.joinpath("Info.plist")
-        with tempfile.NamedTemporaryFile(dir=workdir, suffix=".plist", delete=False) as f:
-            entitlements_plist = Path(f.name)
         embedded_prov = component.joinpath("embedded.mobileprovision")
         old_bundle_id = plist_buddy("Print :CFBundleIdentifier", info_plist)
         bundle_id = f"{main_bundle_id}{old_bundle_id[len(old_main_bundle_id):]}"
         component_bin = component.joinpath(component.stem)
+
+        with tempfile.NamedTemporaryFile(dir=workdir, suffix=".plist", delete=False) as f:
+            old_entitlements_plist = Path(f.name)
+        with tempfile.NamedTemporaryFile(dir=workdir, suffix=".plist", delete=False) as f:
+            entitlements_plist = Path(f.name)
+        with open(old_entitlements_plist, "w") as f:
+            try:
+                s = codesign_dump_entitlements(component)
+            except:
+                print("Failed to dump entitlements, using empty")
+                s = plist_base
+            f.write(s)
 
         if opts.prov_file is not None:
             shutil.copy2(opts.prov_file, embedded_prov)
@@ -257,9 +275,12 @@ def sign(opts: SignOpts):
             # Ideally, all such cases should be manually replaced.
             dump_prov_entitlements_plist(embedded_prov, entitlements_plist)
 
+            print("Original entitlements:", read_file(old_entitlements_plist), sep="\n")
+
             prov_app_id = plist_buddy("Print :application-identifier", entitlements_plist)
             component_app_id = f"{opts.team_id}.{bundle_id}"
-            if prov_app_id == component_app_id or "*" in prov_app_id:
+            wildcard_app_id = f"{opts.team_id}.*"
+            if prov_app_id in [component_app_id, wildcard_app_id]:
                 plist_buddy(f"Set :application-identifier {component_app_id}", entitlements_plist)
             else:
                 print(
@@ -267,19 +288,30 @@ def sign(opts: SignOpts):
                     "Using provisioning profile's app id - the component will run, but its entitlements will be broken!",
                     sep="\n",
                 )
+
+            if any(
+                item == wildcard_app_id for item in dump_plist_array(":keychain-access-groups", entitlements_plist)
+            ):
+                plist_buddy(
+                    "Delete :keychain-access-groups",
+                    entitlements_plist,
+                )
+                plist_buddy(
+                    "Add :keychain-access-groups array",
+                    entitlements_plist,
+                )
+                for i, item in enumerate(dump_plist_array(":keychain-access-groups", old_entitlements_plist)):
+                    plist_buddy(
+                        f"Add :keychain-access-groups:{i} string '{opts.team_id}.{item[item.index('.')+1:]}'",
+                        entitlements_plist,
+                    )
         else:
             with tempfile.TemporaryDirectory() as tmpdir_str:
                 tmpdir = Path(tmpdir_str)
                 simple_app_dir = tmpdir.joinpath("SimpleApp")
                 shutil.copytree("SimpleApp", simple_app_dir)
                 xcode_entitlements_plist = simple_app_dir.joinpath("SimpleApp/SimpleApp.entitlements")
-                with open(xcode_entitlements_plist, "w") as f:
-                    try:
-                        s = codesign_dump_entitlements(component)
-                    except:
-                        print("Failed to dump entitlements, using empty")
-                        s = plist_base
-                    f.write(s)
+                shutil.copy2(old_entitlements_plist, xcode_entitlements_plist)
 
                 old_team_id = None
                 try:
@@ -359,15 +391,7 @@ def sign(opts: SignOpts):
                     ("com.apple.developer.ubiquity-container-identifiers", 2, []),  # iCloud.com.test.app
                     ("keychain-access-groups", 2, []),  # TEAM_ID.com.test.app
                 ):
-                    try:
-                        remap_ids = plist_buddy(
-                            "Print :" + entitlement,
-                            xcode_entitlements_plist,
-                        )
-                    except:
-                        remap_ids = ""
-
-                    remap_ids = [remap_id.strip() for remap_id in remap_ids.splitlines()[1:-1]]
+                    remap_ids = dump_plist_array(":" + entitlement, xcode_entitlements_plist)
                     if len(remap_ids) < 1:
                         # some features like iCloud only work with Xcode if they have identifiers defined
                         # make sure such cases are fixed if necessary
