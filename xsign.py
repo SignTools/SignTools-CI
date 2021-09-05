@@ -381,62 +381,66 @@ def sign(opts: SignOpts):
 
                 patches: Dict[str, str] = {}
 
-                for entitlement, skip_parts, parents in (
-                    ("com.apple.security.application-groups", 2, []),  # group.com.test.app
+                for entitlements, prefix, skip_parts, parents in (
+                    ("com.apple.security.application-groups", "group.", 2, []),
                     (
-                        "com.apple.developer.icloud-container-identifiers",
-                        2,  # iCloud.com.test.app
+                        [
+                            "com.apple.developer.icloud-container-identifiers",
+                            "com.apple.developer.ubiquity-container-identifiers",
+                        ],
+                        "iCloud.",
+                        2,
                         ["com.apple.developer.icloud-container-environment", "com.apple.developer.icloud-services"],
                     ),
-                    ("com.apple.developer.ubiquity-container-identifiers", 2, []),  # iCloud.com.test.app
-                    ("keychain-access-groups", 2, []),  # TEAM_ID.com.test.app
+                    ("keychain-access-groups", "", 2, []),  # TEAM_ID.com.test.app
                 ):
-                    remap_ids = dump_plist_array(":" + entitlement, xcode_entitlements_plist)
-                    if len(remap_ids) < 1:
-                        # some features like iCloud only work with Xcode if they have identifiers defined
-                        # make sure such cases are fixed if necessary
-                        for parent in parents:
-                            try:
-                                # check if entitlement exists
-                                plist_buddy(
-                                    "Print :" + parent,
-                                    xcode_entitlements_plist,
-                                )
-                                # add a default identifier
-                                remap_ids.append(bundle_id)
-                                break
-                            except:
-                                continue
+                    for entitlement in entitlements:
+                        remap_ids = dump_plist_array(":" + entitlement, xcode_entitlements_plist)
+                        if len(remap_ids) < 1:
+                            # some apps define entitlement properties such as iCloud without identifiers, but modern iOS doesn't like that
+                            # manually add identifiers if necessary
+                            for parent in parents:
+                                try:
+                                    # check if entitlement exists
+                                    plist_buddy(
+                                        "Print :" + parent,
+                                        xcode_entitlements_plist,
+                                    )
+                                    # add a default identifier
+                                    remap_ids.append(prefix + bundle_id)
+                                    break
+                                except:
+                                    continue
 
-                    if len(remap_ids) < 1:
-                        continue
+                        if len(remap_ids) < 1:
+                            continue
 
-                    for remap_id in remap_ids:
-                        if remap_id not in mappings:
-                            if opts.encode_ids:
-                                seed = remap_id + opts.team_id
-                                if opts.bundle_id:
-                                    seed += opts.bundle_id
-                                mappings[remap_id] = gen_id(remap_id, seed, skip_parts)
-                            else:
-                                mappings[remap_id] = remap_id
+                        for remap_id in remap_ids:
+                            if remap_id not in mappings:
+                                if opts.encode_ids:
+                                    seed = remap_id + opts.team_id
+                                    if opts.bundle_id:
+                                        seed += opts.bundle_id
+                                    mappings[remap_id] = gen_id(remap_id, seed, skip_parts)
+                                else:
+                                    mappings[remap_id] = remap_id
 
-                    plist_buddy(
-                        "Delete :" + entitlement,
-                        xcode_entitlements_plist,
-                        check=False,
-                    )
-                    plist_buddy(
-                        f"Add :{entitlement} array",
-                        xcode_entitlements_plist,
-                    )
-
-                    for i, remap_id in enumerate(remap_ids):
                         plist_buddy(
-                            f"Add :{entitlement}:{i} string '{mappings[remap_id]}'",
+                            "Delete :" + entitlement,
+                            xcode_entitlements_plist,
+                            check=False,
+                        )
+                        plist_buddy(
+                            f"Add :{entitlement} array",
                             xcode_entitlements_plist,
                         )
-                        patches[remap_id] = mappings[remap_id]
+
+                        for i, remap_id in enumerate(remap_ids):
+                            plist_buddy(
+                                f"Add :{entitlement}:{i} string '{mappings[remap_id]}'",
+                                xcode_entitlements_plist,
+                            )
+                            patches[remap_id] = mappings[remap_id]
 
                 if old_team_id:
                     patches[old_team_id] = opts.team_id
