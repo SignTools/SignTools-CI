@@ -5,26 +5,13 @@ from pathlib import Path
 from subprocess import CompletedProcess, PIPE, Popen, TimeoutExpired
 import tempfile
 import shutil
-from typing import Callable, Dict, List, Optional, NamedTuple
+from typing import Any, Callable, Dict, Optional, NamedTuple
 import re
 import os
 from util import *
 import time
-
-
-def plist_buddy(args: str, plist: Path, check: bool = True, xml: bool = False):
-    cmd = ["/usr/libexec/PlistBuddy"]
-    if xml:
-        cmd.append("-x")
-    return decode_clean(
-        run_process(
-            *cmd,
-            "-c",
-            args,
-            str(plist),
-            check=check,
-        ).stdout
-    )
+import plistlib
+import copy
 
 
 def codesign(identity: str, component: Path, entitlements: Optional[Path] = None):
@@ -41,10 +28,11 @@ def codesign_async(identity: str, component: Path, entitlements: Optional[Path] 
     return subprocess.Popen([*cmd, str(component)], stdout=PIPE, stderr=PIPE)
 
 
-def codesign_dump_entitlements(component: Path):
-    return decode_clean(
+def codesign_dump_entitlements(component: Path) -> Dict[Any, Any]:
+    entitlements_str = decode_clean(
         run_process("/usr/bin/codesign", "--no-strict", "-d", "--entitlements", ":-", str(component)).stdout
     )
+    return plistlib.loads(entitlements_str.encode("utf-8"))
 
 
 def binary_replace(pattern: str, f: Path):
@@ -53,27 +41,6 @@ def binary_replace(pattern: str, f: Path):
 
 def security_dump_prov(f: Path):
     return decode_clean(run_process("security", "cms", "-D", "-i", str(f)).stdout)
-
-
-plist_base = """<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-</dict>
-</plist>
-"""
-
-adhoc_options_plist = """<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-	<key>method</key>
-	<string>ad-hoc</string>
-	<key>iCloudContainerEnvironment</key>
-	<string>Production</string>
-</dict>
-</plist>
-"""
 
 
 def exec_retry(name: str, func: Callable[[], CompletedProcess[bytes]]):
@@ -129,8 +96,8 @@ def xcode_export(project_dir: Path, archive: Path, export_dir: Path):
 
 def _xcode_export(project_dir: Path, archive: Path, export_dir: Path):
     options_plist = export_dir.joinpath("options.plist")
-    with open(options_plist, "w") as f:
-        f.write(adhoc_options_plist)
+    with options_plist.open("wb") as f:
+        plistlib.dump({"method": "ad-hoc", "iCloudContainerEnvironment": "Production"}, f)
     return run_process(
         "xcodebuild",
         "-allowProvisioningUpdates",
@@ -147,16 +114,9 @@ def _xcode_export(project_dir: Path, archive: Path, export_dir: Path):
     )
 
 
-def dump_prov_entitlements_plist(prov_file: Path, entitlements_plist: Path):
-    with tempfile.TemporaryDirectory() as tmpdir_str:
-        tmpdir = Path(tmpdir_str)
-        prov_plist = tmpdir.joinpath("prov.plist")
-        with open(prov_plist, "w") as f:
-            s = security_dump_prov(prov_file)
-            f.write(s)
-        with open(entitlements_plist, "w") as f:
-            s = plist_buddy("Print :Entitlements", prov_plist, xml=True)
-            f.write(s)
+def dump_prov_entitlements(prov_file: Path) -> Dict[Any, Any]:
+    s = security_dump_prov(prov_file)
+    return plistlib.loads(s.encode("utf-8"))["Entitlements"]
 
 
 def popen_check(pipe: Popen[bytes]):
@@ -167,14 +127,6 @@ def popen_check(pipe: Popen[bytes]):
         if pipe.stderr:
             data["stderr"] = decode_clean(pipe.stderr.read())
         raise Exception(data)
-
-
-def dump_plist_array(key: str, plist_file: Path) -> List[str]:
-    try:
-        items = plist_buddy("Print " + key, plist_file)
-        return [item.strip() for item in items.splitlines()[1:-1]]
-    except:
-        return []
 
 
 class SignOpts(NamedTuple):
@@ -195,7 +147,9 @@ class SignOpts(NamedTuple):
 def sign(opts: SignOpts):
     main_app = next(opts.app_dir.glob("Payload/*.app"))
     main_info_plist = main_app.joinpath("Info.plist")
-    old_main_bundle_id = plist_buddy("Print :CFBundleIdentifier", main_info_plist)
+    with main_info_plist.open("rb") as f:
+        main_info: Dict[Any, Any] = plistlib.load(f)
+    old_main_bundle_id = main_info["CFBundleIdentifier"]
     is_distribution = "Distribution" in opts.common_name
 
     if opts.prov_file:
@@ -205,9 +159,7 @@ def sign(opts: SignOpts):
         elif opts.bundle_id == "":
             print("Using provisioning profile's application id")
             with tempfile.TemporaryDirectory() as tmpdir_str:
-                entitlements_plist = Path(tmpdir_str).joinpath("entitlements.plist")
-                dump_prov_entitlements_plist(opts.prov_file, entitlements_plist)
-                prov_app_id = plist_buddy("Print :application-identifier", entitlements_plist)
+                prov_app_id = dump_prov_entitlements(opts.prov_file)["application-identifier"]
                 main_bundle_id = prov_app_id[prov_app_id.find(".") + 1 :]
                 if "*" in main_bundle_id:
                     print("Provisioning profile is wildcard, using original bundle id")
@@ -229,14 +181,16 @@ def sign(opts: SignOpts):
 
     if opts.bundle_name:
         print(f"Setting CFBundleDisplayName to {opts.bundle_name}")
-        plist_buddy(f"Delete :CFBundleDisplayName", main_info_plist, check=False)
-        plist_buddy(f"Add :CFBundleDisplayName string '{opts.bundle_name}'", main_info_plist)
+        main_info["CFBundleDisplayName"] = opts.bundle_name
 
     with open("bundle_id.txt", "w") as f:
         if opts.force_original_id:
             f.write(old_main_bundle_id)
         else:
             f.write(main_bundle_id)
+
+    with main_info_plist.open("wb") as f:
+        plistlib.dump(main_info, f)
 
     component_exts = ["*.app", "*.appex", "*.framework", "*.dylib"]
     # make sure components are ordered depth-first, otherwise signing will overlap and become invalid
@@ -252,22 +206,22 @@ def sign(opts: SignOpts):
 
     def sign_primary(component: Path, workdir: Path):
         info_plist = component.joinpath("Info.plist")
+        with info_plist.open("rb") as f:
+            info: Dict[Any, Any] = plistlib.load(f)
         embedded_prov = component.joinpath("embedded.mobileprovision")
-        old_bundle_id = plist_buddy("Print :CFBundleIdentifier", info_plist)
+        old_bundle_id = info["CFBundleIdentifier"]
         bundle_id = f"{main_bundle_id}{old_bundle_id[len(old_main_bundle_id):]}"
         component_bin = component.joinpath(component.stem)
 
         with tempfile.NamedTemporaryFile(dir=workdir, suffix=".plist", delete=False) as f:
-            old_entitlements_plist = Path(f.name)
-        with tempfile.NamedTemporaryFile(dir=workdir, suffix=".plist", delete=False) as f:
             entitlements_plist = Path(f.name)
-        with open(old_entitlements_plist, "w") as f:
-            try:
-                s = codesign_dump_entitlements(component)
-            except:
-                print("Failed to dump entitlements, using empty")
-                s = plist_base
-            f.write(s)
+
+        old_entitlements: Dict[Any, Any]
+        try:
+            old_entitlements = codesign_dump_entitlements(component)
+        except:
+            print("Failed to dump entitlements, using empty")
+            old_entitlements = {}
 
         if opts.prov_file is not None:
             shutil.copy2(opts.prov_file, embedded_prov)
@@ -275,15 +229,16 @@ def sign(opts: SignOpts):
             # profile, but not when applied to a binary. For example:
             #   com.apple.developer.icloud-services = *
             # Ideally, all such cases should be manually replaced.
-            dump_prov_entitlements_plist(embedded_prov, entitlements_plist)
+            entitlements = dump_prov_entitlements(embedded_prov)
 
-            print("Original entitlements:", read_file(old_entitlements_plist), sep="\n")
+            print("Original entitlements:")
+            print_object(entitlements)
 
-            prov_app_id = plist_buddy("Print :application-identifier", entitlements_plist)
+            prov_app_id = entitlements["application-identifier"]
             component_app_id = f"{opts.team_id}.{bundle_id}"
             wildcard_app_id = f"{opts.team_id}.*"
             if prov_app_id in [component_app_id, wildcard_app_id]:
-                plist_buddy(f"Set :application-identifier {component_app_id}", entitlements_plist)
+                entitlements["application-identifier"] = component_app_id
             else:
                 print(
                     f"WARNING: Provisioning profile's app id '{prov_app_id}' does not match component's app id '{component_app_id}'.",
@@ -291,46 +246,34 @@ def sign(opts: SignOpts):
                     sep="\n",
                 )
 
-            if any(
-                item == wildcard_app_id for item in dump_plist_array(":keychain-access-groups", entitlements_plist)
-            ):
-                plist_buddy(
-                    "Delete :keychain-access-groups",
-                    entitlements_plist,
-                )
-                plist_buddy(
-                    "Add :keychain-access-groups array",
-                    entitlements_plist,
-                )
-                for i, item in enumerate(dump_plist_array(":keychain-access-groups", old_entitlements_plist)):
-                    plist_buddy(
-                        f"Add :keychain-access-groups:{i} string '{opts.team_id}.{item[item.index('.')+1:]}'",
-                        entitlements_plist,
-                    )
+            keychain = entitlements.get("keychain-access-groups", [])
+            if any(item == wildcard_app_id for item in keychain):
+                keychain.clear()
+                for item in old_entitlements.get("keychain-access-groups", []):
+                    keychain.append(f"{opts.team_id}.{item[item.index('.')+1:]}")
+
+            with entitlements_plist.open("wb") as f:
+                plistlib.dump(entitlements, f)
         else:
             with tempfile.TemporaryDirectory() as tmpdir_str:
                 tmpdir = Path(tmpdir_str)
                 simple_app_dir = tmpdir.joinpath("SimpleApp")
                 shutil.copytree("SimpleApp", simple_app_dir)
                 xcode_entitlements_plist = simple_app_dir.joinpath("SimpleApp/SimpleApp.entitlements")
-                shutil.copy2(old_entitlements_plist, xcode_entitlements_plist)
+                xcode_entitlements = copy.deepcopy(old_entitlements)
 
-                old_team_id = None
-                try:
-                    old_team_id = plist_buddy("Print :com.apple.developer.team-identifier", xcode_entitlements_plist)
-                except:
+                old_team_id: Optional[str] = old_entitlements.get("com.apple.developer.team-identifier", None)
+                if not old_team_id:
                     print("Failed to read old team id")
                 # before 2011 this was known as 'bundle seed id' and could be set freely
                 # now it is always equal to team id
-                old_app_id_prefix = None
-                try:
-                    old_app_id_prefix = plist_buddy("Print :application-identifier", xcode_entitlements_plist).split(
-                        "."
-                    )[0]
-                except:
+                old_app_id_prefix: Optional[str] = old_entitlements.get("application-identifier", "").split(".")[0]
+                if not old_app_id_prefix:
+                    old_app_id_prefix = None
                     print("Failed to read old app id prefix")
 
-                print("Original entitlements:", read_file(xcode_entitlements_plist), sep="\n")
+                print("Original entitlements:")
+                print_object(old_entitlements)
 
                 for item in [
                     # invalid Xcode entitlements
@@ -365,21 +308,14 @@ def sign(opts: SignOpts):
                     # https://developer.apple.com/documentation/app_clips
                     "com.apple.developer.associated-appclip-app-identifiers",
                 ]:
-                    plist_buddy(
-                        f"Delete :{item}",
-                        xcode_entitlements_plist,
-                        check=False,
-                    )
+                    xcode_entitlements.pop(item, False)
 
                 for entitlement, value in {
                     "com.apple.developer.icloud-container-environment": "Development",
                     "aps-environment": "development",
                 }.items():
-                    plist_buddy(
-                        f"Set :{entitlement} {value}",
-                        xcode_entitlements_plist,
-                        check=False,
-                    )
+                    if entitlement in xcode_entitlements:
+                        xcode_entitlements[entitlement] = value
 
                 patches: Dict[str, str] = {}
 
@@ -397,22 +333,12 @@ def sign(opts: SignOpts):
                     ("keychain-access-groups", "", 2, []),  # TEAM_ID.com.test.app
                 ):
                     for entitlement in entitlements:
-                        remap_ids = dump_plist_array(":" + entitlement, xcode_entitlements_plist)
+                        remap_ids = xcode_entitlements.get(entitlement, [])
                         if len(remap_ids) < 1:
                             # some apps define entitlement properties such as iCloud without identifiers, but modern iOS doesn't like that
                             # manually add identifiers if necessary
-                            for parent in parents:
-                                try:
-                                    # check if entitlement exists
-                                    plist_buddy(
-                                        "Print :" + parent,
-                                        xcode_entitlements_plist,
-                                    )
-                                    # add a default identifier
-                                    remap_ids.append(prefix + bundle_id)
-                                    break
-                                except:
-                                    continue
+                            if any(parent in xcode_entitlements for parent in parents):
+                                remap_ids.append(prefix + bundle_id)
 
                         if len(remap_ids) < 1:
                             continue
@@ -427,21 +353,9 @@ def sign(opts: SignOpts):
                                 else:
                                     mappings[remap_id] = remap_id
 
-                        plist_buddy(
-                            "Delete :" + entitlement,
-                            xcode_entitlements_plist,
-                            check=False,
-                        )
-                        plist_buddy(
-                            f"Add :{entitlement} array",
-                            xcode_entitlements_plist,
-                        )
-
-                        for i, remap_id in enumerate(remap_ids):
-                            plist_buddy(
-                                f"Add :{entitlement}:{i} string '{mappings[remap_id]}'",
-                                xcode_entitlements_plist,
-                            )
+                        xcode_entitlements[entitlement] = []
+                        for remap_id in remap_ids:
+                            xcode_entitlements[entitlement].append(remap_id)
                             patches[remap_id] = mappings[remap_id]
 
                 if old_team_id:
@@ -454,6 +368,11 @@ def sign(opts: SignOpts):
                 # sort patches by decreasing length to make sure that there are no overlaps
                 patches = dict(sorted(patches.items(), key=lambda x: len(x[0]), reverse=True))
 
+                with info_plist.open("wb") as f:
+                    plistlib.dump(info, f)
+                with xcode_entitlements_plist.open("wb") as f:
+                    plistlib.dump(xcode_entitlements, f)
+
                 print("Applying patches...")
                 targets = [xcode_entitlements_plist]
                 if opts.patch_ids:
@@ -465,7 +384,9 @@ def sign(opts: SignOpts):
                     for old, new in patches.items():
                         binary_replace(f"s/{re.escape(old)}/{re.escape(new)}/g", target)
 
-                print("Patched entitlements:", read_file(xcode_entitlements_plist), sep="\n")
+                with xcode_entitlements_plist.open("rb") as f:
+                    print("Patched entitlements:")
+                    print_object(plistlib.load(f))
 
                 simple_app_proj = simple_app_dir.joinpath("SimpleApp.xcodeproj")
                 simple_app_pbxproj = simple_app_proj.joinpath("project.pbxproj")
@@ -494,40 +415,44 @@ def sign(opts: SignOpts):
                 shutil.move(str(prov_profiles[0]), embedded_prov)
                 for prov_profile in prov_profiles[1:]:
                     os.remove(prov_profile)
-                with open(entitlements_plist, "w") as f:
-                    f.write(codesign_dump_entitlements(output_bin))
+                with entitlements_plist.open("wb") as f:
+                    plistlib.dump(codesign_dump_entitlements(output_bin), f)
+
+        with entitlements_plist.open("rb") as f:
+            entitlements = plistlib.load(f)
 
         if opts.force_original_id:
             print("Keeping original CFBundleIdentifier")
-            plist_buddy(f"Set :CFBundleIdentifier {old_bundle_id}", info_plist)
+            info["CFBundleIdentifier"] = old_bundle_id
         else:
             print(f"Setting CFBundleIdentifier to {bundle_id}")
-            plist_buddy(f"Set :CFBundleIdentifier {bundle_id}", info_plist)
+            info["CFBundleIdentifier"] = bundle_id
 
-        plist_buddy("Delete :get-task-allow", entitlements_plist, check=False)
         if opts.patch_debug:
-            plist_buddy("Add :get-task-allow bool true", entitlements_plist)
+            entitlements["get-task-allow"] = True
             print("Enabled app debugging")
         else:
+            entitlements.pop("get-task-allow", False)
             print("Disabled app debugging")
 
         if opts.patch_all_devices:
             print("Force enabling support for all devices")
-            plist_buddy("Delete :UISupportedDevices", info_plist, check=False)
+            info.pop("UISupportedDevices", False)
             # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/iPhoneOSKeys.html
-            plist_buddy("Delete :UIDeviceFamily", info_plist, check=False)
-            plist_buddy("Add :UIDeviceFamily array", info_plist)
-            plist_buddy("Add :UIDeviceFamily:0 integer 1", info_plist)
-            plist_buddy("Add :UIDeviceFamily:1 integer 2", info_plist)
+            info["UIDeviceFamily"] = [1, 2]
 
         if opts.patch_file_sharing:
             print("Force enabling file sharing")
-            plist_buddy("Delete :UIFileSharingEnabled", info_plist, check=False)
-            plist_buddy("Add :UIFileSharingEnabled bool true", info_plist)
-            plist_buddy("Delete :UISupportsDocumentBrowser", info_plist, check=False)
-            plist_buddy("Add :UISupportsDocumentBrowser bool true", info_plist)
+            info["UIFileSharingEnabled"] = True
+            info["UISupportsDocumentBrowser"] = True
 
-        print("Signing with entitlements:", read_file(entitlements_plist), sep="\n")
+        with info_plist.open("wb") as f:
+            plistlib.dump(info, f)
+        with entitlements_plist.open("wb") as f:
+            plistlib.dump(entitlements, f)
+
+        print("Signing with entitlements:")
+        print_object(entitlements)
         return codesign_async(opts.common_name, component, entitlements_plist)
 
     with tempfile.TemporaryDirectory() as tmpdir_str:

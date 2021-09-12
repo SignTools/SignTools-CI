@@ -3,7 +3,8 @@ import shutil
 import subprocess
 import random
 import string
-from typing import Optional, Mapping, Union
+from typing import Any, Optional, Mapping, Union
+import json
 
 StrPath = Union[str, Path]
 
@@ -83,3 +84,7 @@ def extract_zip(archive: Path, dest_dir: Path):
         return run_process("7z", "x", str(archive), "-o" + str(dest_dir))
     else:
         return run_process("unzip", "-o", str(archive), "-d", str(dest_dir))
+
+
+def print_object(obj: Any):
+    print(json.dumps(obj, indent=4, sort_keys=True))
