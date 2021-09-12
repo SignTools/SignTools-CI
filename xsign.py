@@ -79,16 +79,18 @@ adhoc_options_plist = """<?xml version="1.0" encoding="UTF-8"?>
 def exec_retry(name: str, func: Callable[[], CompletedProcess[bytes]]):
     start_time = time.time()
     last_error: Optional[Exception] = None
-    while time.time() - start_time < 90:
+    retry_count = 0
+    while retry_count < 3 and time.time() - start_time < 90:
         try:
             return func()
         except Exception as e:
-            if isinstance(e.__cause__, TimeoutExpired):
-                last_error = e
-                print(f"{name} timed out, retrying")
-            else:
-                raise e
-    raise Exception(f"{name} timed out too many times") from last_error
+            last_error = e
+            if not isinstance(e.__cause__, TimeoutExpired):
+                retry_count += 1
+            print(f"{name} errored, retrying")
+    if last_error is None:
+        raise Exception(f"{name} had an unknown error")
+    raise last_error
 
 
 def xcode_archive(project_dir: Path, scheme_name: str, archive: Path):
