@@ -275,29 +275,40 @@ def sign(opts: SignOpts):
                 print("Original entitlements:")
                 print_object(old_entitlements)
 
-                for entitlement in list(xcode_entitlements):
-                    if entitlement not in [
-                        "application-identifier",
-                        "aps-environment",
-                        "com.apple.developer.associated-domains",
-                        "com.apple.developer.default-data-protection",
-                        "com.apple.developer.icloud-container-development-container-identifiers",
-                        "com.apple.developer.icloud-container-environment",
-                        "com.apple.developer.icloud-container-identifiers",
-                        "com.apple.developer.icloud-services",
-                        "com.apple.developer.kernel.extended-virtual-addressing",
-                        "com.apple.developer.networking.multipath",
-                        "com.apple.developer.networking.networkextension",
-                        "com.apple.developer.networking.wifi-info",
-                        "com.apple.developer.siri",
-                        "com.apple.developer.team-identifier",
-                        "com.apple.developer.ubiquity-container-identifiers",
-                        "com.apple.developer.ubiquity-kvstore-identifier",
-                        "com.apple.security.application-groups",
-                        "get-task-allow",
-                        "keychain-access-groups",
-                    ]:
-                        xcode_entitlements.pop(entitlement)
+                for item in [
+                    # invalid Xcode entitlements
+                    "application-identifier",
+                    "com.apple.developer.team-identifier",
+                    # the original value may be incompatible with the type of certificate, so let Xcode add the right one
+                    "get-task-allow",
+                    # inapplicable
+                    "com.apple.developer.in-app-payments",
+                    # special entitlements
+                    # https://developer.apple.com/documentation/xcode/preparing-your-app-to-be-the-default-browser-or-email-client
+                    "com.apple.developer.mail-client",
+                    "com.apple.developer.web-browser",
+                    # https://stackoverflow.com/questions/65330175/which-entitlements-are-special-entitlements-how-do-they-work
+                    "com.apple.developer.networking.multicast",
+                    "com.apple.developer.usernotifications.filtering",
+                    "com.apple.developer.usernotifications.critical-alerts",
+                    "com.apple.developer.networking.HotspotHelper",
+                    "com.apple.managed.vpn.shared",
+                    # some others
+                    "platform-application",
+                    "com.apple.private.security.no-container",
+                    "com.apple.developer.coremedia.allow-alternate-video-decoder-selection",
+                    # only valid in app store distribution
+                    # https://developer.apple.com/library/archive/qa/qa1830/_index.html
+                    "beta-reports-active",
+                    # https://developer.apple.com/documentation/carplay/requesting_the_carplay_entitlements
+                    "com.apple.developer.carplay-messaging",
+                    # https://stackoverflow.com/questions/62726152/provisioning-profile-doesnt-include-the-com-apple-developer-pushkit-unrestricte
+                    "com.apple.developer.pushkit.unrestricted-voip",
+                    # TODO: possible, but requires more complex parent-child app component relationship
+                    # https://developer.apple.com/documentation/app_clips
+                    "com.apple.developer.associated-appclip-app-identifiers",
+                ]:
+                    xcode_entitlements.pop(item, False)
 
                 for entitlement, value in {
                     "com.apple.developer.icloud-container-environment": "Development",
