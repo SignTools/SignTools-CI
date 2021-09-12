@@ -5,7 +5,7 @@ from pathlib import Path
 from subprocess import CompletedProcess, PIPE, Popen, TimeoutExpired
 import tempfile
 import shutil
-from typing import Any, Callable, Dict, Optional, NamedTuple
+from typing import Any, Callable, Dict, List, Optional, NamedTuple
 import re
 import os
 from util import *
@@ -142,6 +142,13 @@ class SignOpts(NamedTuple):
     encode_ids: bool
     patch_ids: bool
     force_original_id: bool
+
+
+class RemapDef(NamedTuple):
+    entitlements: List[str]
+    prefix: str
+    skip_parts: int
+    is_list: bool
 
 
 def sign(opts: SignOpts):
@@ -311,6 +318,23 @@ def sign(opts: SignOpts):
                 ]:
                     xcode_entitlements.pop(item, False)
 
+                # some apps define iCloud properties but without identifiers
+                # this is pointless, but it also causes modern Xcode to fail - remove them
+                if not any(
+                    item
+                    in [
+                        "com.apple.developer.icloud-container-identifiers",
+                        "com.apple.developer.ubiquity-container-identifiers",
+                        "com.apple.developer.icloud-container-development-container-identifiers",
+                    ]
+                    for item in xcode_entitlements
+                ):
+                    for entitlement in list(xcode_entitlements):
+                        if isinstance(entitlement, str) and entitlement.startswith("com.apple.developer.icloud"):
+                            print(f"Removing incorrectly used entitlement {entitlement}")
+                            xcode_entitlements.pop(entitlement)
+
+                # make sure the app can be signed in development
                 for entitlement, value in {
                     "com.apple.developer.icloud-container-environment": "Development",
                     "aps-environment": "development",
@@ -320,26 +344,27 @@ def sign(opts: SignOpts):
 
                 patches: Dict[str, str] = {}
 
-                for entitlements, prefix, skip_parts, parents in (
-                    ("com.apple.security.application-groups", "group.", 2, []),
-                    (
+                for remap_def in (
+                    RemapDef(["com.apple.security.application-groups"], "group.", 2, True),
+                    RemapDef(
                         [
                             "com.apple.developer.icloud-container-identifiers",
                             "com.apple.developer.ubiquity-container-identifiers",
+                            "com.apple.developer.icloud-container-development-container-identifiers",
                         ],
                         "iCloud.",
                         2,
-                        ["com.apple.developer.icloud-container-environment", "com.apple.developer.icloud-services"],
+                        True,
                     ),
-                    ("keychain-access-groups", "", 2, []),  # TEAM_ID.com.test.app
+                    RemapDef(["keychain-access-groups"], "", 2, True),  # TEAM_ID.com.test.app
+                    RemapDef(
+                        ["com.apple.developer.ubiquity-kvstore-identifier"], "", 2, False
+                    ),  # TEAM_ID.com.test.app
                 ):
-                    for entitlement in entitlements:
-                        remap_ids = xcode_entitlements.get(entitlement, [])
-                        if len(remap_ids) < 1:
-                            # some apps define entitlement properties such as iCloud without identifiers, but modern iOS doesn't like that
-                            # manually add identifiers if necessary
-                            if any(parent in xcode_entitlements for parent in parents):
-                                remap_ids.append(prefix + bundle_id)
+                    for entitlement in remap_def.entitlements:
+                        remap_ids: List[str] | str = xcode_entitlements.get(entitlement, [])
+                        if isinstance(remap_ids, str):
+                            remap_ids = [remap_ids]
 
                         if len(remap_ids) < 1:
                             continue
@@ -350,7 +375,7 @@ def sign(opts: SignOpts):
                                     seed = opts.team_id
                                     if opts.bundle_id:
                                         seed += opts.bundle_id
-                                    mappings[remap_id] = gen_id(remap_id, seed, skip_parts)
+                                    mappings[remap_id] = gen_id(remap_id, seed, remap_def.skip_parts)
                                 else:
                                     mappings[remap_id] = remap_id
 
@@ -358,6 +383,9 @@ def sign(opts: SignOpts):
                         for remap_id in remap_ids:
                             xcode_entitlements[entitlement].append(remap_id)
                             patches[remap_id] = mappings[remap_id]
+
+                        if not remap_def.is_list:
+                            xcode_entitlements[entitlement] = xcode_entitlements[entitlement][0]
 
                 if old_team_id:
                     patches[old_team_id] = opts.team_id
