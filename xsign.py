@@ -297,6 +297,7 @@ def sign(opts: SignOpts):
                     "platform-application",
                     "com.apple.private.security.no-container",
                     "com.apple.developer.coremedia.allow-alternate-video-decoder-selection",
+                    "com.apple.developer.arcade-operations",
                     # only valid in app store distribution
                     # https://developer.apple.com/library/archive/qa/qa1830/_index.html
                     "beta-reports-active",
