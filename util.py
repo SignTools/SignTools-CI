@@ -5,6 +5,7 @@ import random
 import string
 from typing import Any, Optional, Mapping, Union
 import json
+import os
 
 StrPath = Union[str, Path]
 
@@ -63,8 +64,13 @@ def kill_xcode(check: bool):
 
 
 def get_prov_profiles():
+    """
+    The list will be sorted by descending modification time.
+    """
     prov_profiles_path = Path.home().joinpath("Library/MobileDevice/Provisioning Profiles")
-    return prov_profiles_path.glob("*.mobileprovision")
+    result = list(prov_profiles_path.glob("*.mobileprovision"))
+    result.sort(key=os.path.getmtime, reverse=True)
+    return result
 
 
 def open_xcode(project: Optional[Path] = None):
