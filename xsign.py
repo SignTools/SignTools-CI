@@ -272,12 +272,17 @@ def sign(opts: SignOpts):
                 old_team_id: Optional[str] = old_entitlements.get("com.apple.developer.team-identifier", None)
                 if not old_team_id:
                     print("Failed to read old team id")
+                else:
+                    mappings[old_team_id] = opts.team_id
+
                 # before 2011 this was known as 'bundle seed id' and could be set freely
                 # now it is always equal to team id
                 old_app_id_prefix: Optional[str] = old_entitlements.get("application-identifier", "").split(".")[0]
                 if not old_app_id_prefix:
                     old_app_id_prefix = None
                     print("Failed to read old app id prefix")
+                else:
+                    mappings[old_app_id_prefix] = opts.team_id
 
                 print("Original entitlements:")
                 print_object(old_entitlements)
@@ -329,8 +334,6 @@ def sign(opts: SignOpts):
                         xcode_entitlements[entitlement] = value
 
                 # remap any ids in entitlements, then byte patch them into various files
-                patches: Dict[str, str] = {}
-
                 if opts.encode_ids:
                     for remap_def in (
                         RemapDef(["com.apple.security.application-groups"], "group.", True),  # group.com.test.app
@@ -379,14 +382,6 @@ def sign(opts: SignOpts):
                                 xcode_entitlements[entitlement].append(remap_def.prefix + mappings[remap_id])
                                 if not remap_def.is_list:
                                     xcode_entitlements[entitlement] = xcode_entitlements[entitlement][0]
-                                patches[remap_id] = mappings[remap_id]
-
-                    if old_team_id:
-                        patches[old_team_id] = opts.team_id
-                    if old_app_id_prefix:
-                        patches[old_app_id_prefix] = opts.team_id
-                    patches[old_bundle_id] = bundle_id
-                    patches[old_main_bundle_id] = main_bundle_id
 
                 with info_plist.open("wb") as f:
                     plistlib.dump(info, f)
@@ -395,7 +390,7 @@ def sign(opts: SignOpts):
 
                 if opts.encode_ids and opts.patch_ids:
                     # sort patches by decreasing length to make sure that there are no overlaps
-                    patches = dict(sorted(patches.items(), key=lambda x: len(x[0]), reverse=True))
+                    patches = dict(sorted(mappings.items(), key=lambda x: len(x[0]), reverse=True))
 
                     print("Applying patches...")
                     for target in [component_bin, info_plist]:
