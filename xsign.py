@@ -230,6 +230,9 @@ def sign(opts: SignOpts):
             print("Failed to dump entitlements, using empty")
             old_entitlements = {}
 
+        print("Original entitlements:")
+        print_object(old_entitlements)
+
         if opts.prov_file is not None:
             shutil.copy2(opts.prov_file, embedded_prov)
             # This may cause issues with wildcard entitlements, since they are valid in the provisioning
@@ -237,9 +240,6 @@ def sign(opts: SignOpts):
             #   com.apple.developer.icloud-services = *
             # Ideally, all such cases should be manually replaced.
             entitlements = dump_prov_entitlements(embedded_prov)
-
-            print("Original entitlements:")
-            print_object(entitlements)
 
             prov_app_id = entitlements["application-identifier"]
             component_app_id = f"{opts.team_id}.{bundle_id}"
@@ -283,9 +283,6 @@ def sign(opts: SignOpts):
                     print("Failed to read old app id prefix")
                 else:
                     mappings[old_app_id_prefix] = opts.team_id
-
-                print("Original entitlements:")
-                print_object(old_entitlements)
 
                 # only keep tested and supported entitlements
                 for entitlement in list(xcode_entitlements):
