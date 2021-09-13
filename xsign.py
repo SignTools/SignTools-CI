@@ -147,7 +147,6 @@ class SignOpts(NamedTuple):
 class RemapDef(NamedTuple):
     entitlements: List[str]
     prefix: str
-    skip_parts: int
     is_list: bool
 
 
@@ -158,6 +157,8 @@ def sign(opts: SignOpts):
         main_info: Dict[Any, Any] = plistlib.load(f)
     old_main_bundle_id = main_info["CFBundleIdentifier"]
     is_distribution = "Distribution" in opts.common_name
+
+    mappings: Dict[str, str] = {}
 
     if opts.prov_file:
         if opts.bundle_id is None:
@@ -180,8 +181,8 @@ def sign(opts: SignOpts):
             main_bundle_id = opts.bundle_id
         elif opts.encode_ids:
             print("Using encoded original bundle id")
-            seed = opts.team_id
-            main_bundle_id = gen_id(old_main_bundle_id, seed, 1)
+            main_bundle_id = gen_id(old_main_bundle_id, opts.team_id)
+            mappings[old_main_bundle_id] = main_bundle_id
         else:
             print("Using original bundle id")
             main_bundle_id = old_main_bundle_id
@@ -204,8 +205,6 @@ def sign(opts: SignOpts):
     components = [item for e in component_exts for item in main_app.glob("**/" + e)][::-1]
     components.append(main_app)
 
-    mappings: Dict[str, str] = {}
-
     def sign_secondary(component: Path, workdir: Path):
         # entitlements of frameworks, etc. don't matter, so leave them (potentially) invalid
         print("Signing with original entitlements")
@@ -218,6 +217,7 @@ def sign(opts: SignOpts):
         embedded_prov = component.joinpath("embedded.mobileprovision")
         old_bundle_id = info["CFBundleIdentifier"]
         bundle_id = f"{main_bundle_id}{old_bundle_id[len(old_main_bundle_id):]}"
+        mappings[old_bundle_id] = bundle_id
         component_bin = component.joinpath(component.stem)
 
         with tempfile.NamedTemporaryFile(dir=workdir, suffix=".plist", delete=False) as f:
@@ -282,11 +282,10 @@ def sign(opts: SignOpts):
                 print("Original entitlements:")
                 print_object(old_entitlements)
 
+                # only keep tested and supported entitlements
                 for entitlement in list(xcode_entitlements):
                     if entitlement not in [
-                        "application-identifier",
                         "aps-environment",
-                        "com.apple.developer.associated-domains",
                         "com.apple.developer.default-data-protection",
                         "com.apple.developer.icloud-container-development-container-identifiers",
                         "com.apple.developer.icloud-container-environment",
@@ -297,7 +296,6 @@ def sign(opts: SignOpts):
                         "com.apple.developer.networking.networkextension",
                         "com.apple.developer.networking.wifi-info",
                         "com.apple.developer.siri",
-                        "com.apple.developer.team-identifier",
                         "com.apple.developer.ubiquity-container-identifiers",
                         "com.apple.developer.ubiquity-kvstore-identifier",
                         "com.apple.security.application-groups",
@@ -330,76 +328,79 @@ def sign(opts: SignOpts):
                     if entitlement in xcode_entitlements:
                         xcode_entitlements[entitlement] = value
 
+                # remap any ids in entitlements, then byte patch them into various files
                 patches: Dict[str, str] = {}
 
-                for remap_def in (
-                    RemapDef(["com.apple.security.application-groups"], "group.", 2, True),
-                    RemapDef(
-                        [
-                            "com.apple.developer.icloud-container-identifiers",
-                            "com.apple.developer.ubiquity-container-identifiers",
-                            "com.apple.developer.icloud-container-development-container-identifiers",
-                        ],
-                        "iCloud.",
-                        2,
-                        True,
-                    ),
-                    RemapDef(["keychain-access-groups"], "", 2, True),  # TEAM_ID.com.test.app
-                    RemapDef(
-                        ["com.apple.developer.ubiquity-kvstore-identifier"], "", 2, False
-                    ),  # TEAM_ID.com.test.app
-                ):
-                    for entitlement in remap_def.entitlements:
-                        remap_ids: List[str] | str = xcode_entitlements.get(entitlement, [])
-                        if isinstance(remap_ids, str):
-                            remap_ids = [remap_ids]
+                if opts.encode_ids:
+                    for remap_def in (
+                        RemapDef(["com.apple.security.application-groups"], "group.", True),  # group.com.test.app
+                        RemapDef(
+                            [
+                                "com.apple.developer.icloud-container-identifiers",
+                                "com.apple.developer.ubiquity-container-identifiers",
+                                "com.apple.developer.icloud-container-development-container-identifiers",
+                            ],
+                            "iCloud.",
+                            True,
+                        ),  # iCloud.com.test.app
+                        RemapDef(
+                            ["keychain-access-groups"],
+                            opts.team_id + ".",
+                            True,
+                        ),  # APP_ID_PREFIX.com.test.app
+                        RemapDef(
+                            ["com.apple.developer.ubiquity-kvstore-identifier"], opts.team_id + ".", False
+                        ),  # APP_ID_PREFIX.com.test.app
+                    ):
+                        for entitlement in remap_def.entitlements:
+                            remap_ids: List[str] | str = xcode_entitlements.get(entitlement, [])
+                            if isinstance(remap_ids, str):
+                                remap_ids = [remap_ids]
 
-                        if len(remap_ids) < 1:
-                            continue
+                            if len(remap_ids) < 1:
+                                continue
 
-                        for remap_id in remap_ids:
-                            if remap_id not in mappings:
-                                if opts.encode_ids:
+                            xcode_entitlements[entitlement] = []
+
+                            for remap_id in [id[len(remap_def.prefix) :] for id in remap_ids]:
+                                if remap_id not in mappings:
                                     seed = opts.team_id
                                     if opts.bundle_id:
                                         seed += opts.bundle_id
-                                    mappings[remap_id] = gen_id(remap_id, seed, remap_def.skip_parts)
-                                else:
-                                    mappings[remap_id] = remap_id
+                                    # try to get the longest existing id that shares the same prefix as the new id
+                                    # reuse that prefix to preserve any hierarchy
+                                    existing_id = max(
+                                        (y[: len(os.path.commonprefix([x, remap_id]))] for x, y in mappings.items()),
+                                        key=len,
+                                        default="",
+                                    )
+                                    mappings[remap_id] = existing_id + gen_id(remap_id[len(existing_id) :], seed)
 
-                        xcode_entitlements[entitlement] = []
-                        for remap_id in remap_ids:
-                            xcode_entitlements[entitlement].append(remap_id)
-                            patches[remap_id] = mappings[remap_id]
+                                xcode_entitlements[entitlement].append(remap_def.prefix + mappings[remap_id])
+                                if not remap_def.is_list:
+                                    xcode_entitlements[entitlement] = xcode_entitlements[entitlement][0]
+                                patches[remap_id] = mappings[remap_id]
 
-                        if not remap_def.is_list:
-                            xcode_entitlements[entitlement] = xcode_entitlements[entitlement][0]
-
-                if old_team_id:
-                    patches[old_team_id] = opts.team_id
-                if old_app_id_prefix:
-                    patches[old_app_id_prefix] = opts.team_id
-                patches[old_bundle_id] = bundle_id
-                patches[old_main_bundle_id] = main_bundle_id
-
-                # sort patches by decreasing length to make sure that there are no overlaps
-                patches = dict(sorted(patches.items(), key=lambda x: len(x[0]), reverse=True))
+                    if old_team_id:
+                        patches[old_team_id] = opts.team_id
+                    if old_app_id_prefix:
+                        patches[old_app_id_prefix] = opts.team_id
+                    patches[old_bundle_id] = bundle_id
+                    patches[old_main_bundle_id] = main_bundle_id
 
                 with info_plist.open("wb") as f:
                     plistlib.dump(info, f)
                 with xcode_entitlements_plist.open("wb") as f:
                     plistlib.dump(xcode_entitlements, f)
 
-                print("Applying patches...")
-                targets = [xcode_entitlements_plist]
-                if opts.patch_ids:
-                    targets.append(component_bin)
-                    targets.append(info_plist)
-                else:
-                    print("Skipping component binary")
-                for target in targets:
-                    for old, new in patches.items():
-                        binary_replace(f"s/{re.escape(old)}/{re.escape(new)}/g", target)
+                if opts.encode_ids and opts.patch_ids:
+                    # sort patches by decreasing length to make sure that there are no overlaps
+                    patches = dict(sorted(patches.items(), key=lambda x: len(x[0]), reverse=True))
+
+                    print("Applying patches...")
+                    for target in [component_bin, info_plist]:
+                        for old, new in patches.items():
+                            binary_replace(f"s/{re.escape(old)}/{re.escape(new)}/g", target)
 
                 with xcode_entitlements_plist.open("rb") as f:
                     print("Patched entitlements:")

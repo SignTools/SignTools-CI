@@ -41,20 +41,15 @@ def rand_str(len: int):
     return result
 
 
-def gen_id(bundle_id: str, seed: str, skip_parts: int):
+def gen_id(bundle_id: str, seed: str):
     """
     Encode the bundle id into a different but constant id that
     has the same length and is unique based on the provided seed.
-    The bundle id after its skipped parts will be prepended to the seed.
     """
-    parts = bundle_id.split(".")
-    keep_parts = parts[:skip_parts]
-    new_parts = parts[skip_parts:]
-    seed = ".".join(new_parts) + seed
     old_state = random.getstate()
-    random.seed(seed)
-    new_parts = map(lambda x: rand_str(len(x)), new_parts)
-    result = ".".join([*keep_parts, *new_parts])
+    random.seed(bundle_id + seed)
+    new_parts = map(lambda x: rand_str(len(x)), bundle_id.split("."))
+    result = ".".join(new_parts)
     random.setstate(old_state)
     return result
 
