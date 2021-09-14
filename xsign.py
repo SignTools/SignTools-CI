@@ -322,6 +322,7 @@ class Signer:
             info: Dict[Any, Any] = plistlib.load(f)
         embedded_prov = component.joinpath("embedded.mobileprovision")
         old_bundle_id = info["CFBundleIdentifier"]
+        # create bundle id by suffixing the existing main bundle id with the original suffix
         bundle_id = f"{self.main_bundle_id}{old_bundle_id[len(self.old_main_bundle_id):]}"
         if not self.opts.force_original_id:
             self.mappings[old_bundle_id] = bundle_id
@@ -346,7 +347,7 @@ class Signer:
             self.mappings[old_team_id] = self.opts.team_id
 
         # before 2011 this was known as 'bundle seed id' and could be set freely
-        # now it is always equal to team id
+        # now it is always equal to team id, but some old apps haven't updated
         old_app_id_prefix: Optional[str] = old_entitlements.get("application-identifier", "").split(".")[0]
         if not old_app_id_prefix:
             old_app_id_prefix = None
@@ -365,7 +366,9 @@ class Signer:
             prov_app_id = entitlements["application-identifier"]
             component_app_id = f"{self.opts.team_id}.{bundle_id}"
             wildcard_app_id = f"{self.opts.team_id}.*"
-            if prov_app_id in [component_app_id, wildcard_app_id]:
+
+            # if the prov file has wildcard app id, expand it, or it would be invalid
+            if prov_app_id == wildcard_app_id:
                 entitlements["application-identifier"] = component_app_id
             else:
                 print(
@@ -374,6 +377,7 @@ class Signer:
                     sep="\n",
                 )
 
+            # if the prov file has wildcard keychain group, expand it, or all signed apps will use the same keychain
             keychain = entitlements.get("keychain-access-groups", [])
             if any(item == wildcard_app_id for item in keychain):
                 keychain.clear()
@@ -428,7 +432,7 @@ class Signer:
                 if entitlement in entitlements:
                     entitlements[entitlement] = value
 
-            # remap any ids in entitlements, then byte patch them into various files
+            # remap any ids in entitlements, will later byte patch them into various files
             if self.opts.encode_ids:
                 for remap_def in (
                     RemapDef(["com.apple.security.application-groups"], "group.", True),  # group.com.test.app
