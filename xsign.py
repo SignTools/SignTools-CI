@@ -5,7 +5,7 @@ from pathlib import Path
 from subprocess import CompletedProcess, PIPE, Popen, TimeoutExpired
 import tempfile
 import shutil
-from typing import Any, Callable, Dict, List, Optional, NamedTuple
+from typing import Any, Callable, Dict, List, Optional, NamedTuple, Tuple
 import re
 import os
 from util import *
@@ -150,6 +150,14 @@ class RemapDef(NamedTuple):
     is_list: bool
 
 
+class ComponentData(NamedTuple):
+    old_bundle_id: str
+    bundle_id: str
+    entitlements_plist: Path
+    info_plist: Path
+    embedded_prov: Path
+
+
 class Signer:
     opts: SignOpts
     main_bundle_id: str
@@ -218,7 +226,87 @@ class Signer:
         print("Signing with original entitlements")
         return codesign_async(self.opts.common_name, component)
 
-    def __sign_primary(
+    def __sign_primary(self, component: Path, workdir: Path, data: ComponentData):
+        if self.opts.prov_file is not None:
+            pass
+        else:
+            with tempfile.TemporaryDirectory() as tmpdir_str:
+                tmpdir = Path(tmpdir_str)
+                simple_app_dir = tmpdir.joinpath("SimpleApp")
+                shutil.copytree("SimpleApp", simple_app_dir)
+                xcode_entitlements_plist = simple_app_dir.joinpath("SimpleApp/SimpleApp.entitlements")
+                shutil.copy2(data.entitlements_plist, xcode_entitlements_plist)
+
+                simple_app_proj = simple_app_dir.joinpath("SimpleApp.xcodeproj")
+                simple_app_pbxproj = simple_app_proj.joinpath("project.pbxproj")
+                binary_replace(f"s/BUNDLE_ID_HERE_V9KP12/{data.bundle_id}/g", simple_app_pbxproj)
+                binary_replace(f"s/DEV_TEAM_HERE_J8HK5C/{self.opts.team_id}/g", simple_app_pbxproj)
+
+                for prov_profile in get_prov_profiles():
+                    os.remove(prov_profile)
+
+                print("Obtaining provisioning profile...")
+                print("Archiving app...")
+                archive = simple_app_dir.joinpath("archive.xcarchive")
+                xcode_archive(simple_app_proj, "SimpleApp", archive)
+                if self.is_distribution:
+                    print("Exporting app...")
+                    for prov_profile in get_prov_profiles():
+                        os.remove(prov_profile)
+                    xcode_export(simple_app_proj, archive, simple_app_dir)
+                    exported_ipa = simple_app_dir.joinpath("SimpleApp.ipa")
+                    extract_zip(exported_ipa, simple_app_dir)
+                    output_bin = simple_app_dir.joinpath("Payload/SimpleApp.app")
+                else:
+                    output_bin = archive.joinpath("Products/Applications/SimpleApp.app")
+
+                prov_profiles = list(get_prov_profiles())
+                shutil.move(str(prov_profiles[0]), data.embedded_prov)
+                for prov_profile in prov_profiles[1:]:
+                    os.remove(prov_profile)
+                with data.entitlements_plist.open("wb") as f:
+                    plistlib.dump(codesign_dump_entitlements(output_bin), f)
+
+        with data.info_plist.open("rb") as f:
+            info = plistlib.load(f)
+        with data.entitlements_plist.open("rb") as f:
+            entitlements = plistlib.load(f)
+
+        if self.opts.force_original_id:
+            print("Keeping original CFBundleIdentifier")
+            info["CFBundleIdentifier"] = data.old_bundle_id
+        else:
+            print(f"Setting CFBundleIdentifier to {data.bundle_id}")
+            info["CFBundleIdentifier"] = data.bundle_id
+
+        if self.opts.patch_debug:
+            entitlements["get-task-allow"] = True
+            print("Enabled app debugging")
+        else:
+            entitlements.pop("get-task-allow", False)
+            print("Disabled app debugging")
+
+        if self.opts.patch_all_devices:
+            print("Force enabling support for all devices")
+            info.pop("UISupportedDevices", False)
+            # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/iPhoneOSKeys.html
+            info["UIDeviceFamily"] = [1, 2, 3, 4]  # iOS, iPadOS, tvOS, watchOS
+
+        if self.opts.patch_file_sharing:
+            print("Force enabling file sharing")
+            info["UIFileSharingEnabled"] = True
+            info["UISupportsDocumentBrowser"] = True
+
+        with data.info_plist.open("wb") as f:
+            plistlib.dump(info, f)
+        with data.entitlements_plist.open("wb") as f:
+            plistlib.dump(entitlements, f)
+
+        print("Signing with entitlements:")
+        print_object(entitlements)
+        return codesign_async(self.opts.common_name, component, data.entitlements_plist)
+
+    def __prepare_primary(
         self,
         component: Path,
         workdir: Path,
@@ -230,7 +318,6 @@ class Signer:
         old_bundle_id = info["CFBundleIdentifier"]
         bundle_id = f"{self.main_bundle_id}{old_bundle_id[len(self.old_main_bundle_id):]}"
         self.mappings[old_bundle_id] = bundle_id
-        component_bin = component.joinpath(component.stem)
 
         with tempfile.NamedTemporaryFile(dir=workdir, suffix=".plist", delete=False) as f:
             entitlements_plist = Path(f.name)
@@ -270,222 +357,141 @@ class Signer:
                 keychain.clear()
                 for item in old_entitlements.get("keychain-access-groups", []):
                     keychain.append(f"{self.opts.team_id}.{item[item.index('.')+1:]}")
-
-            with entitlements_plist.open("wb") as f:
-                plistlib.dump(entitlements, f)
         else:
-            with tempfile.TemporaryDirectory() as tmpdir_str:
-                tmpdir = Path(tmpdir_str)
-                simple_app_dir = tmpdir.joinpath("SimpleApp")
-                shutil.copytree("SimpleApp", simple_app_dir)
-                xcode_entitlements_plist = simple_app_dir.joinpath("SimpleApp/SimpleApp.entitlements")
-                xcode_entitlements = copy.deepcopy(old_entitlements)
+            entitlements = copy.deepcopy(old_entitlements)
 
-                old_team_id: Optional[str] = old_entitlements.get("com.apple.developer.team-identifier", None)
-                if not old_team_id:
-                    print("Failed to read old team id")
-                else:
-                    self.mappings[old_team_id] = self.opts.team_id
+            old_team_id: Optional[str] = old_entitlements.get("com.apple.developer.team-identifier", None)
+            if not old_team_id:
+                print("Failed to read old team id")
+            else:
+                self.mappings[old_team_id] = self.opts.team_id
 
-                # before 2011 this was known as 'bundle seed id' and could be set freely
-                # now it is always equal to team id
-                old_app_id_prefix: Optional[str] = old_entitlements.get("application-identifier", "").split(".")[0]
-                if not old_app_id_prefix:
-                    old_app_id_prefix = None
-                    print("Failed to read old app id prefix")
-                else:
-                    self.mappings[old_app_id_prefix] = self.opts.team_id
+            # before 2011 this was known as 'bundle seed id' and could be set freely
+            # now it is always equal to team id
+            old_app_id_prefix: Optional[str] = old_entitlements.get("application-identifier", "").split(".")[0]
+            if not old_app_id_prefix:
+                old_app_id_prefix = None
+                print("Failed to read old app id prefix")
+            else:
+                self.mappings[old_app_id_prefix] = self.opts.team_id
 
-                # only keep tested and supported entitlements
-                for entitlement in list(xcode_entitlements):
-                    if entitlement not in [
-                        "aps-environment",
-                        "com.apple.developer.default-data-protection",
-                        "com.apple.developer.icloud-container-development-container-identifiers",
-                        "com.apple.developer.icloud-container-environment",
-                        "com.apple.developer.icloud-container-identifiers",
-                        "com.apple.developer.icloud-services",
-                        "com.apple.developer.kernel.extended-virtual-addressing",
-                        "com.apple.developer.networking.multipath",
-                        "com.apple.developer.networking.networkextension",
-                        "com.apple.developer.networking.wifi-info",
-                        "com.apple.developer.siri",
-                        "com.apple.developer.ubiquity-container-identifiers",
-                        "com.apple.developer.ubiquity-kvstore-identifier",
-                        "com.apple.security.application-groups",
-                        "get-task-allow",
-                        "keychain-access-groups",
-                    ]:
-                        xcode_entitlements.pop(entitlement)
+            # only keep tested and supported entitlements
+            for entitlement in list(entitlements):
+                if entitlement not in [
+                    "aps-environment",
+                    "com.apple.developer.default-data-protection",
+                    "com.apple.developer.icloud-container-development-container-identifiers",
+                    "com.apple.developer.icloud-container-environment",
+                    "com.apple.developer.icloud-container-identifiers",
+                    "com.apple.developer.icloud-services",
+                    "com.apple.developer.kernel.extended-virtual-addressing",
+                    "com.apple.developer.networking.multipath",
+                    "com.apple.developer.networking.networkextension",
+                    "com.apple.developer.networking.wifi-info",
+                    "com.apple.developer.siri",
+                    "com.apple.developer.ubiquity-container-identifiers",
+                    "com.apple.developer.ubiquity-kvstore-identifier",
+                    "com.apple.security.application-groups",
+                    "get-task-allow",
+                    "keychain-access-groups",
+                ]:
+                    entitlements.pop(entitlement)
 
-                # some apps define iCloud properties but without identifiers
-                # this is pointless, but it also causes modern Xcode to fail - remove them
-                if not any(
-                    item
-                    in [
-                        "com.apple.developer.icloud-container-identifiers",
-                        "com.apple.developer.ubiquity-container-identifiers",
-                        "com.apple.developer.icloud-container-development-container-identifiers",
-                    ]
-                    for item in xcode_entitlements
+            # some apps define iCloud properties but without identifiers
+            # this is pointless, but it also causes modern Xcode to fail - remove them
+            if not any(
+                item
+                in [
+                    "com.apple.developer.icloud-container-identifiers",
+                    "com.apple.developer.ubiquity-container-identifiers",
+                    "com.apple.developer.icloud-container-development-container-identifiers",
+                ]
+                for item in entitlements
+            ):
+                for entitlement in list(entitlements):
+                    if isinstance(entitlement, str) and entitlement.startswith("com.apple.developer.icloud"):
+                        print(f"Removing incorrectly used entitlement {entitlement}")
+                        entitlements.pop(entitlement)
+
+            # make sure the app can be signed in development
+            for entitlement, value in {
+                "com.apple.developer.icloud-container-environment": "Development",
+                "aps-environment": "development",
+            }.items():
+                if entitlement in entitlements:
+                    entitlements[entitlement] = value
+
+            # remap any ids in entitlements, then byte patch them into various files
+            if self.opts.encode_ids:
+                for remap_def in (
+                    RemapDef(["com.apple.security.application-groups"], "group.", True),  # group.com.test.app
+                    RemapDef(
+                        [
+                            "com.apple.developer.icloud-container-identifiers",
+                            "com.apple.developer.ubiquity-container-identifiers",
+                            "com.apple.developer.icloud-container-development-container-identifiers",
+                        ],
+                        "iCloud.",
+                        True,
+                    ),  # iCloud.com.test.app
+                    RemapDef(
+                        ["keychain-access-groups"],
+                        self.opts.team_id + ".",
+                        True,
+                    ),  # APP_ID_PREFIX.com.test.app
+                    RemapDef(
+                        ["com.apple.developer.ubiquity-kvstore-identifier"], self.opts.team_id + ".", False
+                    ),  # APP_ID_PREFIX.com.test.app
                 ):
-                    for entitlement in list(xcode_entitlements):
-                        if isinstance(entitlement, str) and entitlement.startswith("com.apple.developer.icloud"):
-                            print(f"Removing incorrectly used entitlement {entitlement}")
-                            xcode_entitlements.pop(entitlement)
+                    for entitlement in remap_def.entitlements:
+                        remap_ids: List[str] | str = entitlements.get(entitlement, [])
+                        if isinstance(remap_ids, str):
+                            remap_ids = [remap_ids]
 
-                # make sure the app can be signed in development
-                for entitlement, value in {
-                    "com.apple.developer.icloud-container-environment": "Development",
-                    "aps-environment": "development",
-                }.items():
-                    if entitlement in xcode_entitlements:
-                        xcode_entitlements[entitlement] = value
+                        if len(remap_ids) < 1:
+                            continue
 
-                # remap any ids in entitlements, then byte patch them into various files
-                if self.opts.encode_ids:
-                    for remap_def in (
-                        RemapDef(["com.apple.security.application-groups"], "group.", True),  # group.com.test.app
-                        RemapDef(
-                            [
-                                "com.apple.developer.icloud-container-identifiers",
-                                "com.apple.developer.ubiquity-container-identifiers",
-                                "com.apple.developer.icloud-container-development-container-identifiers",
-                            ],
-                            "iCloud.",
-                            True,
-                        ),  # iCloud.com.test.app
-                        RemapDef(
-                            ["keychain-access-groups"],
-                            self.opts.team_id + ".",
-                            True,
-                        ),  # APP_ID_PREFIX.com.test.app
-                        RemapDef(
-                            ["com.apple.developer.ubiquity-kvstore-identifier"], self.opts.team_id + ".", False
-                        ),  # APP_ID_PREFIX.com.test.app
-                    ):
-                        for entitlement in remap_def.entitlements:
-                            remap_ids: List[str] | str = xcode_entitlements.get(entitlement, [])
-                            if isinstance(remap_ids, str):
-                                remap_ids = [remap_ids]
+                        entitlements[entitlement] = []
 
-                            if len(remap_ids) < 1:
-                                continue
+                        for remap_id in [id[len(remap_def.prefix) :] for id in remap_ids]:
+                            if remap_id not in self.mappings:
+                                seed = self.opts.team_id
+                                if self.opts.bundle_id:
+                                    seed += self.opts.bundle_id
+                                # try to get the longest existing id that shares the same prefix as the new id
+                                # reuse that prefix to preserve any hierarchy
+                                existing_id = max(
+                                    (y[: len(os.path.commonprefix([x, remap_id]))] for x, y in self.mappings.items()),
+                                    key=len,
+                                    default="",
+                                )
+                                self.mappings[remap_id] = existing_id + gen_id(remap_id[len(existing_id) :], seed)
 
-                            xcode_entitlements[entitlement] = []
+                            entitlements[entitlement].append(remap_def.prefix + self.mappings[remap_id])
+                            if not remap_def.is_list:
+                                entitlements[entitlement] = entitlements[entitlement][0]
 
-                            for remap_id in [id[len(remap_def.prefix) :] for id in remap_ids]:
-                                if remap_id not in self.mappings:
-                                    seed = self.opts.team_id
-                                    if self.opts.bundle_id:
-                                        seed += self.opts.bundle_id
-                                    # try to get the longest existing id that shares the same prefix as the new id
-                                    # reuse that prefix to preserve any hierarchy
-                                    existing_id = max(
-                                        (
-                                            y[: len(os.path.commonprefix([x, remap_id]))]
-                                            for x, y in self.mappings.items()
-                                        ),
-                                        key=len,
-                                        default="",
-                                    )
-                                    self.mappings[remap_id] = existing_id + gen_id(remap_id[len(existing_id) :], seed)
-
-                                xcode_entitlements[entitlement].append(remap_def.prefix + self.mappings[remap_id])
-                                if not remap_def.is_list:
-                                    xcode_entitlements[entitlement] = xcode_entitlements[entitlement][0]
-
-                with info_plist.open("wb") as f:
-                    plistlib.dump(info, f)
-                with xcode_entitlements_plist.open("wb") as f:
-                    plistlib.dump(xcode_entitlements, f)
-
-                if self.opts.encode_ids and self.opts.patch_ids:
-                    # sort patches by decreasing length to make sure that there are no overlaps
-                    patches = dict(sorted(self.mappings.items(), key=lambda x: len(x[0]), reverse=True))
-
-                    print("Applying patches...")
-                    for target in [component_bin, info_plist]:
-                        for old, new in patches.items():
-                            binary_replace(f"s/{re.escape(old)}/{re.escape(new)}/g", target)
-
-                with xcode_entitlements_plist.open("rb") as f:
-                    print("Patched entitlements:")
-                    print_object(plistlib.load(f))
-
-                simple_app_proj = simple_app_dir.joinpath("SimpleApp.xcodeproj")
-                simple_app_pbxproj = simple_app_proj.joinpath("project.pbxproj")
-                binary_replace(f"s/BUNDLE_ID_HERE_V9KP12/{bundle_id}/g", simple_app_pbxproj)
-                binary_replace(f"s/DEV_TEAM_HERE_J8HK5C/{self.opts.team_id}/g", simple_app_pbxproj)
-
-                for prov_profile in get_prov_profiles():
-                    os.remove(prov_profile)
-
-                print("Obtaining provisioning profile...")
-                print("Archiving app...")
-                archive = simple_app_dir.joinpath("archive.xcarchive")
-                xcode_archive(simple_app_proj, "SimpleApp", archive)
-                if self.is_distribution:
-                    print("Exporting app...")
-                    for prov_profile in get_prov_profiles():
-                        os.remove(prov_profile)
-                    xcode_export(simple_app_proj, archive, simple_app_dir)
-                    exported_ipa = simple_app_dir.joinpath("SimpleApp.ipa")
-                    extract_zip(exported_ipa, simple_app_dir)
-                    output_bin = simple_app_dir.joinpath("Payload/SimpleApp.app")
-                else:
-                    output_bin = archive.joinpath("Products/Applications/SimpleApp.app")
-
-                prov_profiles = list(get_prov_profiles())
-                shutil.move(str(prov_profiles[0]), embedded_prov)
-                for prov_profile in prov_profiles[1:]:
-                    os.remove(prov_profile)
-                with entitlements_plist.open("wb") as f:
-                    plistlib.dump(codesign_dump_entitlements(output_bin), f)
-
-        with entitlements_plist.open("rb") as f:
-            entitlements = plistlib.load(f)
-
-        if self.opts.force_original_id:
-            print("Keeping original CFBundleIdentifier")
-            info["CFBundleIdentifier"] = old_bundle_id
-        else:
-            print(f"Setting CFBundleIdentifier to {bundle_id}")
-            info["CFBundleIdentifier"] = bundle_id
-
-        if self.opts.patch_debug:
-            entitlements["get-task-allow"] = True
-            print("Enabled app debugging")
-        else:
-            entitlements.pop("get-task-allow", False)
-            print("Disabled app debugging")
-
-        if self.opts.patch_all_devices:
-            print("Force enabling support for all devices")
-            info.pop("UISupportedDevices", False)
-            # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/iPhoneOSKeys.html
-            info["UIDeviceFamily"] = [1, 2, 3, 4]  # iOS, iPadOS, tvOS, watchOS
-
-        if self.opts.patch_file_sharing:
-            print("Force enabling file sharing")
-            info["UIFileSharingEnabled"] = True
-            info["UISupportsDocumentBrowser"] = True
-
-        with info_plist.open("wb") as f:
-            plistlib.dump(info, f)
         with entitlements_plist.open("wb") as f:
             plistlib.dump(entitlements, f)
 
-        print("Signing with entitlements:")
-        print_object(entitlements)
-        return codesign_async(self.opts.common_name, component, entitlements_plist)
+        return ComponentData(old_bundle_id, bundle_id, entitlements_plist, info_plist, embedded_prov)
 
     def sign(self):
         with tempfile.TemporaryDirectory() as tmpdir_str:
             tmpdir = Path(tmpdir_str)
-            jobs: Dict[Path, subprocess.Popen[bytes]] = {}
+
+            job_defs: List[Tuple[Path, Optional[ComponentData]]] = []
             for component in self.components:
                 print(f"Preparing component {component}")
+
+                if component.suffix in [".appex", ".app"]:
+                    job_defs.append((component, self.__prepare_primary(component, tmpdir)))
+                else:
+                    job_defs.append((component, None))
+
+            jobs: Dict[Path, subprocess.Popen[bytes]] = {}
+            for component, data in job_defs:
+                print(f"Processing component {component}")
 
                 for path in list(jobs.keys()):
                     pipe = jobs[path]
@@ -499,15 +505,28 @@ class Signer:
                     popen_check(pipe)
                     jobs.pop(path)
 
-                print("Processing")
-
                 sc_info = component.joinpath("SC_Info")
                 if sc_info.exists():
                     print(f"Removing leftover AppStore data")
                     shutil.rmtree(sc_info)
 
-                if component.suffix in [".appex", ".app"]:
-                    jobs[component] = self.__sign_primary(component, tmpdir)
+                if self.opts.patch_ids:
+                    # sort patches by decreasing length to make sure that there are no overlaps
+                    patches = dict(sorted(self.mappings.items(), key=lambda x: len(x[0]), reverse=True))
+
+                    print("Applying patches...")
+                    component_bin = component.joinpath(component.stem)
+                    targets = [component_bin]
+                    if data is not None:
+                        targets.append(data.info_plist)
+                    for target in targets:
+                        for old, new in patches.items():
+                            binary_replace(f"s/{re.escape(old)}/{re.escape(new)}/g", target)
+
+                print("Signing")
+
+                if data is not None:
+                    jobs[component] = self.__sign_primary(component, tmpdir, data)
                 else:
                     jobs[component] = self.__sign_secondary(component, tmpdir)
 
