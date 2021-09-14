@@ -500,6 +500,9 @@ class Signer:
                 else:
                     job_defs.append((component, None))
 
+            print("ID mappings:")
+            print_object(self.mappings)
+
             jobs: Dict[Path, subprocess.Popen[bytes]] = {}
             for component, data in job_defs:
                 print(f"Processing component {component}")
