@@ -147,6 +147,7 @@ class SignOpts(NamedTuple):
 class RemapDef(NamedTuple):
     entitlements: List[str]
     prefix: str
+    prefix_only: bool
     is_list: bool
 
 
@@ -435,7 +436,7 @@ class Signer:
             # remap any ids in entitlements, will later byte patch them into various files
             if self.opts.encode_ids:
                 for remap_def in (
-                    RemapDef(["com.apple.security.application-groups"], "group.", True),  # group.com.test.app
+                    RemapDef(["com.apple.security.application-groups"], "group.", False, True),  # group.com.test.app
                     RemapDef(
                         [
                             "com.apple.developer.icloud-container-identifiers",
@@ -443,15 +444,18 @@ class Signer:
                             "com.apple.developer.icloud-container-development-container-identifiers",
                         ],
                         "iCloud.",
+                        False,
                         True,
                     ),  # iCloud.com.test.app
+                    #
+                    # the "prefix_only" definitions need to be at the end to make sure that the correct
+                    # action is taken if the same id is already remapped for non-"prefix_only" ids
+                    #
                     RemapDef(
-                        ["keychain-access-groups"],
-                        self.opts.team_id + ".",
-                        True,
+                        ["keychain-access-groups"], self.opts.team_id + ".", True, True
                     ),  # APP_ID_PREFIX.com.test.app
                     RemapDef(
-                        ["com.apple.developer.ubiquity-kvstore-identifier"], self.opts.team_id + ".", False
+                        ["com.apple.developer.ubiquity-kvstore-identifier"], self.opts.team_id + ".", True, False
                     ),  # APP_ID_PREFIX.com.test.app
                 ):
                     for entitlement in remap_def.entitlements:
@@ -465,20 +469,27 @@ class Signer:
                         entitlements[entitlement] = []
 
                         for remap_id in [id[len(remap_def.prefix) :] for id in remap_ids]:
-                            if remap_id not in self.mappings:
-                                seed = self.opts.team_id
-                                if self.opts.bundle_id:
-                                    seed += self.opts.bundle_id
-                                # try to get the longest existing id that shares the same prefix as the new id
-                                # reuse that prefix to preserve any hierarchy
-                                existing_id = max(
-                                    (y[: len(os.path.commonprefix([x, remap_id]))] for x, y in self.mappings.items()),
-                                    key=len,
-                                    default="",
-                                )
-                                self.mappings[remap_id] = existing_id + gen_id(remap_id[len(existing_id) :], seed)
+                            if remap_id in self.mappings:
+                                new_id = self.mappings[remap_id]
+                            else:
+                                if remap_def.prefix_only:
+                                    # don't change the id as only its prefix needs to be remapped
+                                    new_id = remap_id
+                                else:
+                                    # try to get the longest existing id that shares the same prefix as the new id
+                                    # reuse that prefix to preserve any hierarchy
+                                    existing_id = max(
+                                        (
+                                            y[: len(os.path.commonprefix([x, remap_id]))]
+                                            for x, y in self.mappings.items()
+                                        ),
+                                        key=len,
+                                        default="",
+                                    )
+                                    new_id = existing_id + gen_id(remap_id[len(existing_id) :], self.opts.team_id)
+                                    self.mappings[remap_id] = new_id
 
-                            entitlements[entitlement].append(remap_def.prefix + self.mappings[remap_id])
+                            entitlements[entitlement].append(remap_def.prefix + new_id)
                             if not remap_def.is_list:
                                 entitlements[entitlement] = entitlements[entitlement][0]
 
