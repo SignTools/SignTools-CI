@@ -47,7 +47,7 @@ def exec_retry(name: str, func: Callable[[], CompletedProcess[bytes]]):
     start_time = time.time()
     last_error: Optional[Exception] = None
     retry_count = 0
-    while retry_count < 3 and time.time() - start_time < 90:
+    while retry_count < 3 and time.time() - start_time < 120:
         try:
             return func()
         except Exception as e:
