@@ -5,7 +5,7 @@ from util import *
 import re
 import time
 import tempfile
-import xsign
+from xsign import Signer, SignOpts
 import traceback
 import sys
 
@@ -176,8 +176,8 @@ def run():
         extract_zip(Path("unsigned.ipa"), temp_dir)
 
         print("Signing...")
-        xsign.sign(
-            xsign.SignOpts(
+        Signer(
+            SignOpts(
                 temp_dir,
                 common_name,
                 team_id,
@@ -191,7 +191,7 @@ def run():
                 "-p" in sign_args,
                 "-o" in sign_args,
             )
-        )
+        ).sign()
 
         print("Packaging signed IPA...")
         signed_ipa = Path("signed.ipa")

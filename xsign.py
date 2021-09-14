@@ -150,74 +150,86 @@ class RemapDef(NamedTuple):
     is_list: bool
 
 
-def sign(opts: SignOpts):
-    main_app = next(opts.app_dir.glob("Payload/*.app"))
-    main_info_plist = main_app.joinpath("Info.plist")
-    with main_info_plist.open("rb") as f:
-        main_info: Dict[Any, Any] = plistlib.load(f)
-    old_main_bundle_id = main_info["CFBundleIdentifier"]
-    is_distribution = "Distribution" in opts.common_name
+class Signer:
+    opts: SignOpts
+    main_bundle_id: str
+    old_main_bundle_id: str
+    mappings: Dict[str, str]
+    is_distribution: bool
+    components: List[Path]
 
-    mappings: Dict[str, str] = {}
+    def __init__(self, opts: SignOpts):
+        self.opts = opts
+        main_app = next(opts.app_dir.glob("Payload/*.app"))
+        main_info_plist = main_app.joinpath("Info.plist")
+        with main_info_plist.open("rb") as f:
+            main_info: Dict[Any, Any] = plistlib.load(f)
+        self.old_main_bundle_id = main_info["CFBundleIdentifier"]
+        self.is_distribution = "Distribution" in opts.common_name
 
-    if opts.prov_file:
-        if opts.bundle_id is None:
-            print("Using original bundle id")
-            main_bundle_id = old_main_bundle_id
-        elif opts.bundle_id == "":
-            print("Using provisioning profile's application id")
-            with tempfile.TemporaryDirectory() as tmpdir_str:
+        self.mappings: Dict[str, str] = {}
+
+        if opts.prov_file:
+            if opts.bundle_id is None:
+                print("Using original bundle id")
+                self.main_bundle_id = self.old_main_bundle_id
+            elif opts.bundle_id == "":
+                print("Using provisioning profile's application id")
                 prov_app_id = dump_prov_entitlements(opts.prov_file)["application-identifier"]
-                main_bundle_id = prov_app_id[prov_app_id.find(".") + 1 :]
-                if "*" in main_bundle_id:
+                self.main_bundle_id = prov_app_id[prov_app_id.find(".") + 1 :]
+                if "*" in self.main_bundle_id:
                     print("Provisioning profile is wildcard, using original bundle id")
-                    main_bundle_id = old_main_bundle_id
+                    self.main_bundle_id = self.old_main_bundle_id
+            else:
+                print("Using custom bundle id")
+                self.main_bundle_id = opts.bundle_id
         else:
-            print("Using custom bundle id")
-            main_bundle_id = opts.bundle_id
-    else:
-        if opts.bundle_id:
-            print("Using custom bundle id")
-            main_bundle_id = opts.bundle_id
-        elif opts.encode_ids:
-            print("Using encoded original bundle id")
-            main_bundle_id = gen_id(old_main_bundle_id, opts.team_id)
-            mappings[old_main_bundle_id] = main_bundle_id
-        else:
-            print("Using original bundle id")
-            main_bundle_id = old_main_bundle_id
+            if opts.bundle_id:
+                print("Using custom bundle id")
+                self.main_bundle_id = opts.bundle_id
+            elif opts.encode_ids:
+                print("Using encoded original bundle id")
+                self.main_bundle_id = gen_id(self.old_main_bundle_id, opts.team_id)
+                self.mappings[self.old_main_bundle_id] = self.main_bundle_id
+            else:
+                print("Using original bundle id")
+                self.main_bundle_id = self.old_main_bundle_id
 
-    if opts.bundle_name:
-        print(f"Setting CFBundleDisplayName to {opts.bundle_name}")
-        main_info["CFBundleDisplayName"] = opts.bundle_name
+        if opts.bundle_name:
+            print(f"Setting CFBundleDisplayName to {opts.bundle_name}")
+            main_info["CFBundleDisplayName"] = opts.bundle_name
 
-    with open("bundle_id.txt", "w") as f:
-        if opts.force_original_id:
-            f.write(old_main_bundle_id)
-        else:
-            f.write(main_bundle_id)
+        with open("bundle_id.txt", "w") as f:
+            if opts.force_original_id:
+                f.write(self.old_main_bundle_id)
+            else:
+                f.write(self.main_bundle_id)
 
-    with main_info_plist.open("wb") as f:
-        plistlib.dump(main_info, f)
+        with main_info_plist.open("wb") as f:
+            plistlib.dump(main_info, f)
 
-    component_exts = ["*.app", "*.appex", "*.framework", "*.dylib"]
-    # make sure components are ordered depth-first, otherwise signing will overlap and become invalid
-    components = [item for e in component_exts for item in main_app.glob("**/" + e)][::-1]
-    components.append(main_app)
+        component_exts = ["*.app", "*.appex", "*.framework", "*.dylib"]
+        # make sure components are ordered depth-first, otherwise signing will overlap and become invalid
+        self.components = [item for e in component_exts for item in main_app.glob("**/" + e)][::-1]
+        self.components.append(main_app)
 
-    def sign_secondary(component: Path, workdir: Path):
+    def __sign_secondary(self, component: Path, workdir: Path):
         # entitlements of frameworks, etc. don't matter, so leave them (potentially) invalid
         print("Signing with original entitlements")
-        return codesign_async(opts.common_name, component)
+        return codesign_async(self.opts.common_name, component)
 
-    def sign_primary(component: Path, workdir: Path):
+    def __sign_primary(
+        self,
+        component: Path,
+        workdir: Path,
+    ):
         info_plist = component.joinpath("Info.plist")
         with info_plist.open("rb") as f:
             info: Dict[Any, Any] = plistlib.load(f)
         embedded_prov = component.joinpath("embedded.mobileprovision")
         old_bundle_id = info["CFBundleIdentifier"]
-        bundle_id = f"{main_bundle_id}{old_bundle_id[len(old_main_bundle_id):]}"
-        mappings[old_bundle_id] = bundle_id
+        bundle_id = f"{self.main_bundle_id}{old_bundle_id[len(self.old_main_bundle_id):]}"
+        self.mappings[old_bundle_id] = bundle_id
         component_bin = component.joinpath(component.stem)
 
         with tempfile.NamedTemporaryFile(dir=workdir, suffix=".plist", delete=False) as f:
@@ -233,8 +245,8 @@ def sign(opts: SignOpts):
         print("Original entitlements:")
         print_object(old_entitlements)
 
-        if opts.prov_file is not None:
-            shutil.copy2(opts.prov_file, embedded_prov)
+        if self.opts.prov_file is not None:
+            shutil.copy2(self.opts.prov_file, embedded_prov)
             # This may cause issues with wildcard entitlements, since they are valid in the provisioning
             # profile, but not when applied to a binary. For example:
             #   com.apple.developer.icloud-services = *
@@ -242,8 +254,8 @@ def sign(opts: SignOpts):
             entitlements = dump_prov_entitlements(embedded_prov)
 
             prov_app_id = entitlements["application-identifier"]
-            component_app_id = f"{opts.team_id}.{bundle_id}"
-            wildcard_app_id = f"{opts.team_id}.*"
+            component_app_id = f"{self.opts.team_id}.{bundle_id}"
+            wildcard_app_id = f"{self.opts.team_id}.*"
             if prov_app_id in [component_app_id, wildcard_app_id]:
                 entitlements["application-identifier"] = component_app_id
             else:
@@ -257,7 +269,7 @@ def sign(opts: SignOpts):
             if any(item == wildcard_app_id for item in keychain):
                 keychain.clear()
                 for item in old_entitlements.get("keychain-access-groups", []):
-                    keychain.append(f"{opts.team_id}.{item[item.index('.')+1:]}")
+                    keychain.append(f"{self.opts.team_id}.{item[item.index('.')+1:]}")
 
             with entitlements_plist.open("wb") as f:
                 plistlib.dump(entitlements, f)
@@ -273,7 +285,7 @@ def sign(opts: SignOpts):
                 if not old_team_id:
                     print("Failed to read old team id")
                 else:
-                    mappings[old_team_id] = opts.team_id
+                    self.mappings[old_team_id] = self.opts.team_id
 
                 # before 2011 this was known as 'bundle seed id' and could be set freely
                 # now it is always equal to team id
@@ -282,7 +294,7 @@ def sign(opts: SignOpts):
                     old_app_id_prefix = None
                     print("Failed to read old app id prefix")
                 else:
-                    mappings[old_app_id_prefix] = opts.team_id
+                    self.mappings[old_app_id_prefix] = self.opts.team_id
 
                 # only keep tested and supported entitlements
                 for entitlement in list(xcode_entitlements):
@@ -331,7 +343,7 @@ def sign(opts: SignOpts):
                         xcode_entitlements[entitlement] = value
 
                 # remap any ids in entitlements, then byte patch them into various files
-                if opts.encode_ids:
+                if self.opts.encode_ids:
                     for remap_def in (
                         RemapDef(["com.apple.security.application-groups"], "group.", True),  # group.com.test.app
                         RemapDef(
@@ -345,11 +357,11 @@ def sign(opts: SignOpts):
                         ),  # iCloud.com.test.app
                         RemapDef(
                             ["keychain-access-groups"],
-                            opts.team_id + ".",
+                            self.opts.team_id + ".",
                             True,
                         ),  # APP_ID_PREFIX.com.test.app
                         RemapDef(
-                            ["com.apple.developer.ubiquity-kvstore-identifier"], opts.team_id + ".", False
+                            ["com.apple.developer.ubiquity-kvstore-identifier"], self.opts.team_id + ".", False
                         ),  # APP_ID_PREFIX.com.test.app
                     ):
                         for entitlement in remap_def.entitlements:
@@ -363,20 +375,23 @@ def sign(opts: SignOpts):
                             xcode_entitlements[entitlement] = []
 
                             for remap_id in [id[len(remap_def.prefix) :] for id in remap_ids]:
-                                if remap_id not in mappings:
-                                    seed = opts.team_id
-                                    if opts.bundle_id:
-                                        seed += opts.bundle_id
+                                if remap_id not in self.mappings:
+                                    seed = self.opts.team_id
+                                    if self.opts.bundle_id:
+                                        seed += self.opts.bundle_id
                                     # try to get the longest existing id that shares the same prefix as the new id
                                     # reuse that prefix to preserve any hierarchy
                                     existing_id = max(
-                                        (y[: len(os.path.commonprefix([x, remap_id]))] for x, y in mappings.items()),
+                                        (
+                                            y[: len(os.path.commonprefix([x, remap_id]))]
+                                            for x, y in self.mappings.items()
+                                        ),
                                         key=len,
                                         default="",
                                     )
-                                    mappings[remap_id] = existing_id + gen_id(remap_id[len(existing_id) :], seed)
+                                    self.mappings[remap_id] = existing_id + gen_id(remap_id[len(existing_id) :], seed)
 
-                                xcode_entitlements[entitlement].append(remap_def.prefix + mappings[remap_id])
+                                xcode_entitlements[entitlement].append(remap_def.prefix + self.mappings[remap_id])
                                 if not remap_def.is_list:
                                     xcode_entitlements[entitlement] = xcode_entitlements[entitlement][0]
 
@@ -385,9 +400,9 @@ def sign(opts: SignOpts):
                 with xcode_entitlements_plist.open("wb") as f:
                     plistlib.dump(xcode_entitlements, f)
 
-                if opts.encode_ids and opts.patch_ids:
+                if self.opts.encode_ids and self.opts.patch_ids:
                     # sort patches by decreasing length to make sure that there are no overlaps
-                    patches = dict(sorted(mappings.items(), key=lambda x: len(x[0]), reverse=True))
+                    patches = dict(sorted(self.mappings.items(), key=lambda x: len(x[0]), reverse=True))
 
                     print("Applying patches...")
                     for target in [component_bin, info_plist]:
@@ -401,7 +416,7 @@ def sign(opts: SignOpts):
                 simple_app_proj = simple_app_dir.joinpath("SimpleApp.xcodeproj")
                 simple_app_pbxproj = simple_app_proj.joinpath("project.pbxproj")
                 binary_replace(f"s/BUNDLE_ID_HERE_V9KP12/{bundle_id}/g", simple_app_pbxproj)
-                binary_replace(f"s/DEV_TEAM_HERE_J8HK5C/{opts.team_id}/g", simple_app_pbxproj)
+                binary_replace(f"s/DEV_TEAM_HERE_J8HK5C/{self.opts.team_id}/g", simple_app_pbxproj)
 
                 for prov_profile in get_prov_profiles():
                     os.remove(prov_profile)
@@ -410,7 +425,7 @@ def sign(opts: SignOpts):
                 print("Archiving app...")
                 archive = simple_app_dir.joinpath("archive.xcarchive")
                 xcode_archive(simple_app_proj, "SimpleApp", archive)
-                if is_distribution:
+                if self.is_distribution:
                     print("Exporting app...")
                     for prov_profile in get_prov_profiles():
                         os.remove(prov_profile)
@@ -431,27 +446,27 @@ def sign(opts: SignOpts):
         with entitlements_plist.open("rb") as f:
             entitlements = plistlib.load(f)
 
-        if opts.force_original_id:
+        if self.opts.force_original_id:
             print("Keeping original CFBundleIdentifier")
             info["CFBundleIdentifier"] = old_bundle_id
         else:
             print(f"Setting CFBundleIdentifier to {bundle_id}")
             info["CFBundleIdentifier"] = bundle_id
 
-        if opts.patch_debug:
+        if self.opts.patch_debug:
             entitlements["get-task-allow"] = True
             print("Enabled app debugging")
         else:
             entitlements.pop("get-task-allow", False)
             print("Disabled app debugging")
 
-        if opts.patch_all_devices:
+        if self.opts.patch_all_devices:
             print("Force enabling support for all devices")
             info.pop("UISupportedDevices", False)
             # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/iPhoneOSKeys.html
             info["UIDeviceFamily"] = [1, 2]
 
-        if opts.patch_file_sharing:
+        if self.opts.patch_file_sharing:
             print("Force enabling file sharing")
             info["UIFileSharingEnabled"] = True
             info["UISupportsDocumentBrowser"] = True
@@ -463,39 +478,40 @@ def sign(opts: SignOpts):
 
         print("Signing with entitlements:")
         print_object(entitlements)
-        return codesign_async(opts.common_name, component, entitlements_plist)
+        return codesign_async(self.opts.common_name, component, entitlements_plist)
 
-    with tempfile.TemporaryDirectory() as tmpdir_str:
-        tmpdir = Path(tmpdir_str)
-        jobs: Dict[Path, subprocess.Popen[bytes]] = {}
-        for component in components:
-            print(f"Preparing component {component}")
+    def sign(self):
+        with tempfile.TemporaryDirectory() as tmpdir_str:
+            tmpdir = Path(tmpdir_str)
+            jobs: Dict[Path, subprocess.Popen[bytes]] = {}
+            for component in self.components:
+                print(f"Preparing component {component}")
 
-            for path in list(jobs.keys()):
-                pipe = jobs[path]
-                try:
-                    path.relative_to(component)
-                except:
-                    continue
-                if pipe.poll() is None:
-                    print("Waiting for sub-component to finish signing:", path)
-                    pipe.wait()
+                for path in list(jobs.keys()):
+                    pipe = jobs[path]
+                    try:
+                        path.relative_to(component)
+                    except:
+                        continue
+                    if pipe.poll() is None:
+                        print("Waiting for sub-component to finish signing:", path)
+                        pipe.wait()
+                    popen_check(pipe)
+                    jobs.pop(path)
+
+                print("Processing")
+
+                sc_info = component.joinpath("SC_Info")
+                if sc_info.exists():
+                    print(f"Removing leftover AppStore data")
+                    shutil.rmtree(sc_info)
+
+                if component.suffix in [".appex", ".app"]:
+                    jobs[component] = self.__sign_primary(component, tmpdir)
+                else:
+                    jobs[component] = self.__sign_secondary(component, tmpdir)
+
+            print("Waiting for any remaining components to finish signing")
+            for pipe in jobs.values():
+                pipe.wait()
                 popen_check(pipe)
-                jobs.pop(path)
-
-            print("Processing")
-
-            sc_info = component.joinpath("SC_Info")
-            if sc_info.exists():
-                print(f"Removing leftover AppStore data")
-                shutil.rmtree(sc_info)
-
-            if component.suffix in [".appex", ".app"]:
-                jobs[component] = sign_primary(component, tmpdir)
-            else:
-                jobs[component] = sign_secondary(component, tmpdir)
-
-        print("Waiting for any remaining components to finish signing")
-        for pipe in jobs.values():
-            pipe.wait()
-            popen_check(pipe)
