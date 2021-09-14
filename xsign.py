@@ -339,6 +339,21 @@ class Signer:
         print("Original entitlements:")
         print_object(old_entitlements)
 
+        old_team_id: Optional[str] = old_entitlements.get("com.apple.developer.team-identifier", None)
+        if not old_team_id:
+            print("Failed to read old team id")
+        else:
+            self.mappings[old_team_id] = self.opts.team_id
+
+        # before 2011 this was known as 'bundle seed id' and could be set freely
+        # now it is always equal to team id
+        old_app_id_prefix: Optional[str] = old_entitlements.get("application-identifier", "").split(".")[0]
+        if not old_app_id_prefix:
+            old_app_id_prefix = None
+            print("Failed to read old app id prefix")
+        else:
+            self.mappings[old_app_id_prefix] = self.opts.team_id
+
         if self.opts.prov_file is not None:
             shutil.copy2(self.opts.prov_file, embedded_prov)
             # This may cause issues with wildcard entitlements, since they are valid in the provisioning
@@ -366,21 +381,6 @@ class Signer:
                     keychain.append(f"{self.opts.team_id}.{item[item.index('.')+1:]}")
         else:
             entitlements = copy.deepcopy(old_entitlements)
-
-            old_team_id: Optional[str] = old_entitlements.get("com.apple.developer.team-identifier", None)
-            if not old_team_id:
-                print("Failed to read old team id")
-            else:
-                self.mappings[old_team_id] = self.opts.team_id
-
-            # before 2011 this was known as 'bundle seed id' and could be set freely
-            # now it is always equal to team id
-            old_app_id_prefix: Optional[str] = old_entitlements.get("application-identifier", "").split(".")[0]
-            if not old_app_id_prefix:
-                old_app_id_prefix = None
-                print("Failed to read old app id prefix")
-            else:
-                self.mappings[old_app_id_prefix] = self.opts.team_id
 
             # only keep tested and supported entitlements
             for entitlement in list(entitlements):
