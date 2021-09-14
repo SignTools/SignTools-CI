@@ -525,7 +525,9 @@ class Signer:
                     shutil.rmtree(sc_info)
 
                 if self.opts.patch_ids:
-                    # sort patches by decreasing length to make sure that there are no overlaps
+                    # make sure patches are the same length
+                    patches = {k: v for k, v in self.mappings.items() if len(k) == len(v)}
+                    # sort by decreasing length to make sure that there are no overlaps
                     patches = dict(sorted(self.mappings.items(), key=lambda x: len(x[0]), reverse=True))
 
                     print("Applying patches...")
