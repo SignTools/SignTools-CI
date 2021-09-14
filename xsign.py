@@ -198,7 +198,8 @@ class Signer:
             elif opts.encode_ids:
                 print("Using encoded original bundle id")
                 self.main_bundle_id = gen_id(self.old_main_bundle_id, opts.team_id)
-                self.mappings[self.old_main_bundle_id] = self.main_bundle_id
+                if not self.opts.force_original_id:
+                    self.mappings[self.old_main_bundle_id] = self.main_bundle_id
             else:
                 print("Using original bundle id")
                 self.main_bundle_id = self.old_main_bundle_id
@@ -322,7 +323,8 @@ class Signer:
         embedded_prov = component.joinpath("embedded.mobileprovision")
         old_bundle_id = info["CFBundleIdentifier"]
         bundle_id = f"{self.main_bundle_id}{old_bundle_id[len(self.old_main_bundle_id):]}"
-        self.mappings[old_bundle_id] = bundle_id
+        if not self.opts.force_original_id:
+            self.mappings[old_bundle_id] = bundle_id
 
         with tempfile.NamedTemporaryFile(dir=workdir, suffix=".plist", delete=False) as f:
             entitlements_plist = Path(f.name)
