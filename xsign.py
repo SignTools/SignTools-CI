@@ -199,7 +199,7 @@ class Signer:
             elif opts.encode_ids:
                 print("Using encoded original bundle id")
                 self.main_bundle_id = gen_id(self.old_main_bundle_id, opts.team_id)
-                if not self.opts.force_original_id:
+                if not self.opts.force_original_id and self.old_main_bundle_id != self.main_bundle_id:
                     self.mappings[self.old_main_bundle_id] = self.main_bundle_id
             else:
                 print("Using original bundle id")
@@ -325,7 +325,7 @@ class Signer:
         old_bundle_id = info["CFBundleIdentifier"]
         # create bundle id by suffixing the existing main bundle id with the original suffix
         bundle_id = f"{self.main_bundle_id}{old_bundle_id[len(self.old_main_bundle_id):]}"
-        if not self.opts.force_original_id:
+        if not self.opts.force_original_id and old_bundle_id != bundle_id:
             self.mappings[old_bundle_id] = bundle_id
 
         with tempfile.NamedTemporaryFile(dir=workdir, suffix=".plist", delete=False) as f:
@@ -344,7 +344,7 @@ class Signer:
         old_team_id: Optional[str] = old_entitlements.get("com.apple.developer.team-identifier", None)
         if not old_team_id:
             print("Failed to read old team id")
-        else:
+        elif old_team_id != self.opts.team_id:
             self.mappings[old_team_id] = self.opts.team_id
 
         # before 2011 this was known as 'bundle seed id' and could be set freely
@@ -353,7 +353,7 @@ class Signer:
         if not old_app_id_prefix:
             old_app_id_prefix = None
             print("Failed to read old app id prefix")
-        else:
+        elif old_app_id_prefix != self.opts.team_id:
             self.mappings[old_app_id_prefix] = self.opts.team_id
 
         if self.opts.prov_file is not None:
