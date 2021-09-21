@@ -11,7 +11,9 @@ You only need to configure one provider.
 
 > ### :warning: Developer accounts are only supported on GitHub Actions for now!
 
-## Setup
+## Repository setup
+
+First you need to create your own `ios-signer-ci` repository:
 
 1. Create a GitHub account
 2. Click on the `Use this template` button at the top of this page
@@ -20,7 +22,9 @@ You only need to configure one provider.
 
 Alternatively, you can also manually clone this repo into a new private repository.
 
-You now need to configure a CI provider. You only need one of them:
+## Provider setup
+
+You now need to configure a CI provider. **You only need one**:
 
 ### GitHub Actions
 
