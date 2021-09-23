@@ -392,6 +392,8 @@ class Signer:
                 if entitlement not in [
                     "aps-environment",
                     "com.apple.developer.default-data-protection",
+                    "com.apple.developer.healthkit",
+                    "com.apple.developer.healthkit.access",
                     "com.apple.developer.icloud-container-development-container-identifiers",
                     "com.apple.developer.icloud-container-environment",
                     "com.apple.developer.icloud-container-identifiers",
