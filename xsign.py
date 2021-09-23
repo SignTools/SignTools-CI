@@ -114,9 +114,13 @@ def _xcode_export(project_dir: Path, archive: Path, export_dir: Path):
     )
 
 
-def dump_prov_entitlements(prov_file: Path) -> Dict[Any, Any]:
+def dump_prov(prov_file: Path) -> Dict[Any, Any]:
     s = security_dump_prov(prov_file)
-    return plistlib.loads(s.encode("utf-8"))["Entitlements"]
+    return plistlib.loads(s.encode("utf-8"))
+
+
+def dump_prov_entitlements(prov_file: Path) -> Dict[Any, Any]:
+    return dump_prov(prov_file)["Entitlements"]
 
 
 def popen_check(pipe: Popen[bytes]):
@@ -270,8 +274,15 @@ class Signer:
                     output_bin = archive.joinpath("Products/Applications/SimpleApp.app")
 
                 prov_profiles = list(get_prov_profiles())
-                shutil.move(str(prov_profiles[0]), data.embedded_prov)
-                for prov_profile in prov_profiles[1:]:
+                # sometimes Xcode will create multiple prov profiles:
+                # - iOS Team Provisioning Profile: *
+                # - iOS Team Provisioning Profile: com.test.app
+                # - iOS Team Ad Hoc Provisioning Profile: com.test.app
+                # by taking the longest named one, we are taking the one which supports the most entitlements
+                prov_profiles.sort(key=lambda p: len(dump_prov(p)["Name"]), reverse=True)
+                prov_profile = prov_profiles[0]
+                shutil.copy2(prov_profile, data.embedded_prov)
+                for prov_profile in prov_profiles:
                     os.remove(prov_profile)
                 with data.entitlements_plist.open("wb") as f:
                     plistlib.dump(codesign_dump_entitlements(output_bin), f)

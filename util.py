@@ -59,12 +59,8 @@ def kill_xcode(check: bool):
 
 
 def get_prov_profiles():
-    """
-    The list will be sorted by descending modification time.
-    """
     prov_profiles_path = Path.home().joinpath("Library/MobileDevice/Provisioning Profiles")
     result = list(prov_profiles_path.glob("*.mobileprovision"))
-    result.sort(key=os.path.getmtime, reverse=True)
     return result
 
 
