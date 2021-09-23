@@ -88,4 +88,4 @@ def extract_zip(archive: Path, dest_dir: Path):
 
 
 def print_object(obj: Any):
-    print(json.dumps(obj, indent=4, sort_keys=True))
+    print(json.dumps(obj, indent=4, sort_keys=True, default=str))
