@@ -224,10 +224,11 @@ class Signer:
         with main_info_plist.open("wb") as f:
             plistlib.dump(main_info, f)
 
-        watch_placeholder = main_app.joinpath("com.apple.WatchPlaceholder")
-        if watch_placeholder.exists():
-            print(f"Removing WatchPlaceholder")
-            shutil.rmtree(watch_placeholder)
+        for watch_name in ["com.apple.WatchPlaceholder", "Watch"]:
+            watch_dir = main_app.joinpath(watch_name)
+            if watch_dir.exists():
+                print(f"Removing {watch_name} directory")
+                shutil.rmtree(watch_dir)
 
         component_exts = ["*.app", "*.appex", "*.framework", "*.dylib"]
         # make sure components are ordered depth-first, otherwise signing will overlap and become invalid
