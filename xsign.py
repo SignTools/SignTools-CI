@@ -5,7 +5,7 @@ from pathlib import Path
 from subprocess import CompletedProcess, PIPE, Popen, TimeoutExpired
 import tempfile
 import shutil
-from typing import Any, Callable, Dict, List, Optional, NamedTuple, Tuple
+from typing import Any, Callable, Dict, List, Optional, NamedTuple, Set, Tuple
 import re
 import os
 from util import *
@@ -164,6 +164,7 @@ class Signer:
     main_bundle_id: str
     old_main_bundle_id: str
     mappings: Dict[str, str]
+    removed_entitlements: Set[str]
     is_distribution: bool
     components: List[Path]
 
@@ -177,6 +178,7 @@ class Signer:
         self.is_distribution = "Distribution" in opts.common_name
 
         self.mappings: Dict[str, str] = {}
+        self.removed_entitlements = set()
 
         if opts.prov_file:
             if opts.bundle_id is None:
@@ -409,6 +411,7 @@ class Signer:
                     "get-task-allow",
                     "keychain-access-groups",
                 ]:
+                    self.removed_entitlements.add(entitlement)
                     entitlements.pop(entitlement)
 
             # some apps define iCloud properties but without identifiers
@@ -425,6 +428,7 @@ class Signer:
                 for entitlement in list(entitlements):
                     if isinstance(entitlement, str) and entitlement.startswith("com.apple.developer.icloud"):
                         print(f"Removing incorrectly used entitlement {entitlement}")
+                        self.removed_entitlements.add(entitlement)
                         entitlements.pop(entitlement)
 
             # make sure the app can be signed in development
@@ -515,6 +519,9 @@ class Signer:
 
             print("ID mappings:")
             print_object(self.mappings)
+
+            print("Removed entitlements:")
+            print_object(list(self.removed_entitlements))
 
             jobs: Dict[Path, subprocess.Popen[bytes]] = {}
             for component, data in job_defs:
