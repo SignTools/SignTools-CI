@@ -448,6 +448,7 @@ class Signer:
             for entitlement, value in {
                 "com.apple.developer.icloud-container-environment": "Development",
                 "aps-environment": "development",
+                "get-task-allow": True
             }.items():
                 if entitlement in entitlements:
                     entitlements[entitlement] = value
