@@ -41,7 +41,7 @@ def rand_str(len: int, seed: Any = None):
     if seed is not None:
         old_state = random.getstate()
         random.seed(seed)
-    result = "".join(random.choices(string.ascii_letters + string.digits, k=len))
+    result = "".join(random.choices(string.ascii_lowercase + string.digits, k=len))
     if old_state is not None:
         random.setstate(old_state)
     return result
