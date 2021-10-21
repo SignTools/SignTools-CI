@@ -503,12 +503,12 @@ class Signer:
                         for remap_id in [id[len(remap_def.prefix) :] for id in remap_ids]:
                             if remap_def.prefix_only:
                                 # don't change the id as only its prefix needs to be remapped
-                                new_id = remap_id
+                                new_id = remap_def.prefix + remap_id
                             else:
-                                new_id = self.gen_id(remap_id)
-                                self.mappings[remap_id] = new_id
+                                new_id = remap_def.prefix + self.gen_id(remap_id)
+                                self.mappings[remap_def.prefix + remap_id] = new_id
 
-                            entitlements[entitlement].append(remap_def.prefix + new_id)
+                            entitlements[entitlement].append(new_id)
                             if not remap_def.is_list:
                                 entitlements[entitlement] = entitlements[entitlement][0]
 
