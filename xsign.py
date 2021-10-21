@@ -172,6 +172,19 @@ class Signer:
     is_distribution: bool
     components: List[Path]
 
+    def gen_id(self, input_id: str):
+        """
+        Encodes the provided id into a different but constant id that
+        has the same length and is unique based on the team id.
+        """
+        if not input_id.strip():
+            return input_id
+        if not self.opts.encode_ids:
+            return input_id
+        new_parts = map(lambda x: rand_str(len(x), x + self.opts.team_id), input_id.split("."))
+        result = ".".join(new_parts)
+        return result
+
     def __init__(self, opts: SignOpts):
         self.opts = opts
         main_app = next(opts.app_dir.glob("Payload/*.app"))
@@ -204,7 +217,7 @@ class Signer:
                 self.main_bundle_id = opts.bundle_id
             elif opts.encode_ids:
                 print("Using encoded original bundle id")
-                self.main_bundle_id = gen_id(self.old_main_bundle_id, opts.team_id)
+                self.main_bundle_id = self.gen_id(self.old_main_bundle_id)
                 if not self.opts.force_original_id and self.old_main_bundle_id != self.main_bundle_id:
                     self.mappings[self.old_main_bundle_id] = self.main_bundle_id
             else:
@@ -488,25 +501,12 @@ class Signer:
                         entitlements[entitlement] = []
 
                         for remap_id in [id[len(remap_def.prefix) :] for id in remap_ids]:
-                            if remap_id in self.mappings:
-                                new_id = self.mappings[remap_id]
+                            if remap_def.prefix_only:
+                                # don't change the id as only its prefix needs to be remapped
+                                new_id = remap_id
                             else:
-                                if remap_def.prefix_only:
-                                    # don't change the id as only its prefix needs to be remapped
-                                    new_id = remap_id
-                                else:
-                                    # try to get the longest existing id that shares the same prefix as the new id
-                                    # reuse that prefix to preserve any hierarchy
-                                    existing_id = max(
-                                        (
-                                            y[: len(os.path.commonprefix([x, remap_id]))]
-                                            for x, y in self.mappings.items()
-                                        ),
-                                        key=len,
-                                        default="",
-                                    )
-                                    new_id = existing_id + gen_id(remap_id[len(existing_id) :], self.opts.team_id)
-                                    self.mappings[remap_id] = new_id
+                                new_id = self.gen_id(remap_id)
+                                self.mappings[remap_id] = new_id
 
                             entitlements[entitlement].append(remap_def.prefix + new_id)
                             if not remap_def.is_list:

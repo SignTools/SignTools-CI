@@ -36,21 +36,14 @@ def run_process(
     return result
 
 
-def rand_str(len: int):
+def rand_str(len: int, seed: Any = None):
+    old_state: object = None
+    if seed is not None:
+        old_state = random.getstate()
+        random.seed(seed)
     result = "".join(random.choices(string.ascii_letters + string.digits, k=len))
-    return result
-
-
-def gen_id(bundle_id: str, seed: str):
-    """
-    Encode the bundle id into a different but constant id that
-    has the same length and is unique based on the provided seed.
-    """
-    old_state = random.getstate()
-    random.seed(bundle_id + seed)
-    new_parts = map(lambda x: rand_str(len(x)), bundle_id.split("."))
-    result = ".".join(new_parts)
-    random.setstate(old_state)
+    if old_state is not None:
+        random.setstate(old_state)
     return result
 
 
