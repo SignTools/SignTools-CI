@@ -312,7 +312,6 @@ class Signer:
             info.pop("UISupportedDevices", False)
             # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/iPhoneOSKeys.html
             info["UIDeviceFamily"] = [1, 2, 3, 4]  # iOS, iPadOS, tvOS, watchOS
-            info.pop("MinimumOSVersion", False)
 
         if self.opts.patch_file_sharing:
             print("Force enabling file sharing")
