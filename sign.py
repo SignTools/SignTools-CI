@@ -233,7 +233,7 @@ if __name__ == "__main__":
         print("Cleaning up...")
         if old_keychain:
             security_set_default_keychain(old_keychain)
-        security_remove_keychain(keychain_name)
+            security_remove_keychain(keychain_name)
         if failed:
             curl_with_auth(f"{secret_url}/jobs/{job_id}/fail")
             sys.exit(1)
