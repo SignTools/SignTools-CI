@@ -89,6 +89,11 @@ def archive_zip(content_dir: Path, dest_file: Path):
     return run_process("zip", "-r", str(dest_file.resolve()), ".", cwd=str(content_dir))
 
 
+def inject_tweaks(tweaks_dir: Path):
+    args = map(lambda x: str(x), tweaks_dir.glob("*"))
+    return run_process("./tweaks.sh", *args, capture=False)
+
+
 def setup_account(account_name_file: Path, account_pass_file: Path):
     global old_keychain
     print("Using developer account")
@@ -149,6 +154,11 @@ def setup_account(account_name_file: Path, account_pass_file: Path):
 
 
 def run():
+    tweaks_dir = Path("tweaks")
+    if tweaks_dir.exists():
+        print("Found tweaks, injecting...")
+        inject_tweaks(tweaks_dir)
+
     print("Creating keychain...")
     common_names = security_import(Path("cert.p12"), cert_pass, keychain_name)
     if len(common_names) < 1:
