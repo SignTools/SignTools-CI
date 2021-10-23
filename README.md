@@ -1,6 +1,6 @@
-# iOS Signer CI
+# SignTools CI
 
-This is a free and simple builder for [ios-signer-service](https://github.com/SignTools/ios-signer-service). It uses a Continous Integration (CI) provider to pull, sign, and upload any iOS apps to your `ios-signer-service`.
+This is a free and simple builder for [SignTools](https://github.com/SignTools/SignTools). It uses a Continous Integration (CI) provider to pull, sign, and upload any iOS apps to your `SignTools`.
 
 The following providers are supported:
 
@@ -13,7 +13,7 @@ You only need to configure one provider.
 
 ## Repository setup
 
-First you need to create your own `ios-signer-ci` repository:
+First you need to create your own `SignTools-CI` repository:
 
 1. Create a GitHub account
 2. Click on the `Use this template` button at the top of this page
@@ -32,7 +32,7 @@ You now need to configure a CI provider. **You only need one**:
 2. Select (grant) the `workflow` scope
 3. Generate the token
 
-This is the token you need for your `ios-signer-service`'s builder configuration.
+This is the token you need for your `SignTools` service's builder configuration.
 
 ### Semaphore CI
 
@@ -45,4 +45,4 @@ This is the token you need for your `ios-signer-service`'s builder configuration
 7. Go to `Manage Settings` of that repository
 8. At the bottom of the page that opens, set `What to build` to `Do not build this project (Pause project)`
 
-[View](https://me.semaphoreci.com/account) your API Token. This is the token you need for your `ios-signer-service`'s builder configuration.
+[View](https://me.semaphoreci.com/account) your API Token. This is the token you need for your `SignTools` service's builder configuration.
