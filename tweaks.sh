@@ -4,7 +4,7 @@ set -eu -o pipefail -E
 OLD_WD="$PWD"
 git clone https://github.com/SignTools/Azule ~/Azule
 cd ~/Azule
-git reset --hard f7565d92dbd4d46925c99f9f224a86a5e0def9ee
+git reset --hard ebd6d48cd980fbbc7b460bf49ef35e6dc21604ad
 set +u
 source azule-functions
 set -u
