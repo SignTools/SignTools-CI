@@ -1,4 +1,5 @@
-from typing import Optional, List, Tuple
+import plistlib
+from typing import Match, Optional, List, Tuple
 import os
 from pathlib import Path
 from util import *
@@ -85,13 +86,132 @@ def extract_tar(archive: Path, dest_dir: Path):
     return run_process("tar", "-x", "-f", str(archive), "-C" + str(dest_dir))
 
 
+def extract_deb(app_bin_name: str, app_bundle_id: str, archive: Path, dest_dir: Path):
+    with tempfile.TemporaryDirectory() as temp_dir_str:
+        temp_dir = Path(temp_dir_str)
+        run_process("ar", "x", str(archive.resolve()), cwd=str(temp_dir))
+        with tempfile.TemporaryDirectory() as temp_dir2_str:
+            temp_dir2 = Path(temp_dir2_str)
+            extract_tar(next(temp_dir.glob("data.tar*")), temp_dir2)
+            # order is important in case of conflicting matches
+            for glob in ["*.bundle", "*.framework"]:
+                for component in temp_dir2.glob("**/" + glob):
+                    if component.is_symlink():
+                        continue
+                    if not component.is_dir():
+                        continue
+                    if not component.joinpath("Info.plist").exists():
+                        continue
+                    component.rename(dest_dir.joinpath(component.name))
+            for component in temp_dir2.glob("**/*.dylib"):
+                if component.is_symlink():
+                    continue
+                if not component.is_file():
+                    continue
+                component_plist = component.parent.joinpath(component.stem + ".plist")
+                if component_plist.exists():
+                    with component_plist.open("rb") as f:
+                        info = plistlib.load(f)
+                        if "Filter" in info:
+                            ok = False
+                            if "Bundles" in info["Filter"] and app_bundle_id in info["Filter"]["Bundles"]:
+                                ok = True
+                            elif "Executables" in info["Filter"] and app_bin_name in info["Filter"]["Executables"]:
+                                ok = True
+                            if not ok:
+                                continue
+                component.rename(dest_dir.joinpath(component.name))
+
+
 def archive_zip(content_dir: Path, dest_file: Path):
     return run_process("zip", "-r", str(dest_file.resolve()), ".", cwd=str(content_dir))
 
 
-def inject_tweaks(tweaks_dir: Path):
-    args = map(lambda x: str(x), tweaks_dir.glob("*"))
-    return run_process("./tweaks.sh", *args, capture=False)
+def unix_cp(src: str, dest: str):
+    return run_process("cp", "-r", "-f", src, dest)
+
+
+def file_is_type(file: Path, type: str):
+    return type in decode_clean(run_process("file", str(file)).stdout)
+
+
+def get_otool_imports(binary: Path):
+    output = decode_clean(run_process("otool", "-L", str(binary)).stdout).splitlines()[1:]
+    matches = [re.search(r"(.+)\s\(.+\)", line.strip()) for line in output]
+    results = [match.group(1) for match in matches if match]
+    if len(output) != len(results):
+        raise Exception("Failed to parse imports", {"output": output, "parsed": results})
+    return results
+
+
+def install_name_change(binary: Path, old: Path, new: Path):
+    print("Re-linking", binary, old, new)
+    return run_process("install_name_tool", "-change", str(old), str(new), str(binary))
+
+
+def insert_dylib(binary: Path, path: Path):
+    print("Linking", binary, path)
+    return run_process("./insert_dylib", "--inplace", "--no-strip-codesig", str(path), str(binary))
+
+
+def inject_tweaks(ipa_dir: Path, tweaks_dir: Path):
+    app_dir = next(ipa_dir.glob("Payload/*"))
+    with app_dir.joinpath("Info.plist").open("rb") as f:
+        info = plistlib.load(f)
+        app_bundle_id = info["CFBundleIdentifier"]
+    app_bin = app_dir.joinpath(app_dir.stem)
+    with tempfile.TemporaryDirectory() as temp_dir_str:
+        temp_dir = Path(temp_dir_str)
+        for tweak in tweaks_dir.glob("*"):
+            print("Processing", tweak.name)
+            if tweak.suffix == ".zip":
+                extract_zip(tweak, temp_dir)
+            elif tweak.suffix == ".tar":
+                extract_tar(tweak, temp_dir)
+            elif tweak.suffix == ".deb":
+                extract_deb(app_bin.name, app_bundle_id, tweak, temp_dir)
+            else:
+                tweak.rename(temp_dir.joinpath(tweak.name))
+
+        for component_name, dest_name in {"*.framework": "Frameworks/", "*.dylib": "PlugIns/"}.items():
+            components = list(temp_dir.glob("**/" + component_name))
+            if len(components) > 0:
+                dest_dir = temp_dir.joinpath(dest_name)
+                dest_dir.mkdir(exist_ok=True)
+                for component in components:
+                    component.rename(dest_dir.joinpath(component.name))
+
+        binary_map = {file.name: file for file in temp_dir.glob("**/*") if file_is_type(file, "Mach-O")}
+        for binary in binary_map.values():
+            if binary.suffix == ".dylib":
+                insert_dylib(
+                    app_bin,
+                    Path("@executable_path").joinpath(binary_map[Path(binary).name].relative_to(temp_dir)),
+                )
+            for link in get_otool_imports(binary):
+                link_path = Path(link)
+                if link_path.name in ["libsubstitute.dylib", "libsubstrate.dylib", "CydiaSubstrate"]:
+                    substrate_src = Path("./CydiaSubstrate.framework")
+                    substrate_dest = temp_dir.joinpath("Frameworks", "CydiaSubstrate.framework")
+                    if not substrate_dest.exists():
+                        print("Installing CydiaSubstrate to", substrate_dest)
+                        substrate_dest.parent.mkdir(exist_ok=True)
+                        shutil.copytree(substrate_src, substrate_dest)
+                    install_name_change(
+                        binary,
+                        link_path,
+                        Path("@executable_path").joinpath(
+                            substrate_dest.joinpath("CydiaSubstrate").relative_to(temp_dir)
+                        ),
+                    )
+                elif link_path.name in binary_map:
+                    install_name_change(
+                        binary,
+                        link_path,
+                        Path("@executable_path").joinpath(binary_map[Path(link).name].relative_to(temp_dir)),
+                    )
+
+        unix_cp(str(temp_dir) + "/", str(app_dir) + "/")
 
 
 def setup_account(account_name_file: Path, account_pass_file: Path):
@@ -154,11 +274,6 @@ def setup_account(account_name_file: Path, account_pass_file: Path):
 
 
 def run():
-    tweaks_dir = Path("tweaks")
-    if tweaks_dir.exists():
-        print("Found tweaks, injecting...")
-        inject_tweaks(tweaks_dir)
-
     print("Creating keychain...")
     common_names = security_import(Path("cert.p12"), cert_pass, keychain_name)
     if len(common_names) < 1:
@@ -184,6 +299,11 @@ def run():
         temp_dir = Path(temp_dir_str)
         print("Extracting app...")
         extract_zip(Path("unsigned.ipa"), temp_dir)
+
+        tweaks_dir = Path("tweaks")
+        if tweaks_dir.exists():
+            print("Found tweaks, injecting...")
+            inject_tweaks(temp_dir, tweaks_dir)
 
         print("Signing...")
         Signer(
