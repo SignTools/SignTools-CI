@@ -47,8 +47,8 @@ def rand_str(len: int, seed: Any = None):
     return result
 
 
-def kill_xcode(check: bool):
-    return run_process("killall", "Xcode", check=check)
+def kill_xcode():
+    return run_process("killall", "Xcode", check=False)
 
 
 def get_prov_profiles():

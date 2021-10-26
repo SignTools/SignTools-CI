@@ -66,7 +66,7 @@ def xcode_archive(project_dir: Path, scheme_name: str, archive: Path):
     try:
         return exec_retry("xcode_archive", lambda: _xcode_archive(project_dir, scheme_name, archive))
     finally:
-        kill_xcode(True)
+        kill_xcode()
 
 
 def _xcode_archive(project_dir: Path, scheme_name: str, archive: Path):
@@ -91,7 +91,7 @@ def xcode_export(project_dir: Path, archive: Path, export_dir: Path):
     try:
         return exec_retry("xcode_export", lambda: _xcode_export(project_dir, archive, export_dir))
     finally:
-        kill_xcode(True)
+        kill_xcode()
 
 
 def _xcode_export(project_dir: Path, archive: Path, export_dir: Path):

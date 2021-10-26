@@ -223,7 +223,7 @@ def setup_account(account_name_file: Path, account_pass_file: Path):
     print("Using developer account")
     account_name = read_file(account_name_file)
     account_pass = read_file(account_pass_file)
-    kill_xcode(False)
+    kill_xcode()
     for prov_profile in get_prov_profiles():
         os.remove(prov_profile)
     old_keychain = security_set_default_keychain(keychain_name)
@@ -274,7 +274,7 @@ def setup_account(account_name_file: Path, account_pass_file: Path):
     if osascript(Path("login4.applescript"), check=False, timeout=10).returncode != 0:
         raise Exception("Certificate is revoked. Please provide a new one.")
 
-    kill_xcode(True)
+    kill_xcode()
 
 
 def run():
