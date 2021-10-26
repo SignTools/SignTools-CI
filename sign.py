@@ -93,42 +93,56 @@ def extract_deb(app_bin_name: str, app_bundle_id: str, archive: Path, dest_dir: 
         with tempfile.TemporaryDirectory() as temp_dir2_str:
             temp_dir2 = Path(temp_dir2_str)
             extract_tar(next(temp_dir.glob("data.tar*")), temp_dir2)
-            # order is important in case of conflicting matches
-            for glob in ["*.bundle", "*.framework"]:
-                for component in temp_dir2.glob("**/" + glob):
-                    if component.is_symlink():
+
+            for file in temp_dir2.glob("**/*"):
+                if file.is_symlink():
+                    target = file.resolve()
+                    if target.is_absolute():
+                        target = temp_dir2.joinpath(str(target)[1:])
+                        os.unlink(file)
+                        if target.is_dir():
+                            shutil.copytree(target, file)
+                        else:
+                            shutil.copy2(target, file)
+
+            for glob in ["Library/Application Support/*", "Library/Frameworks/*.framework"]:
+                for file in temp_dir2.glob(glob):
+                    move_merge_replace(file, dest_dir)
+            for glob in ["Library/MobileSubstrate/DynamicLibraries/*.dylib", "usr/lib/**/*.dylib"]:
+                for file in temp_dir2.glob(glob):
+                    if not file.is_file():
                         continue
-                    if not component.is_dir():
-                        continue
-                    if not component.joinpath("Info.plist").exists():
-                        continue
-                    component.rename(dest_dir.joinpath(component.name))
-            for component in temp_dir2.glob("**/*.dylib"):
-                if component.is_symlink():
-                    continue
-                if not component.is_file():
-                    continue
-                component_plist = component.parent.joinpath(component.stem + ".plist")
-                if component_plist.exists():
-                    with component_plist.open("rb") as f:
-                        info = plistlib.load(f)
-                        if "Filter" in info:
-                            ok = False
-                            if "Bundles" in info["Filter"] and app_bundle_id in info["Filter"]["Bundles"]:
-                                ok = True
-                            elif "Executables" in info["Filter"] and app_bin_name in info["Filter"]["Executables"]:
-                                ok = True
-                            if not ok:
-                                continue
-                component.rename(dest_dir.joinpath(component.name))
+                    file_plist = file.parent.joinpath(file.stem + ".plist")
+                    if file_plist.exists():
+                        with file_plist.open("rb") as f:
+                            info = plistlib.load(f)
+                            if "Filter" in info:
+                                ok = False
+                                if "Bundles" in info["Filter"] and app_bundle_id in info["Filter"]["Bundles"]:
+                                    ok = True
+                                elif "Executables" in info["Filter"] and app_bin_name in info["Filter"]["Executables"]:
+                                    ok = True
+                                if not ok:
+                                    continue
+                    move_merge_replace(file, dest_dir)
 
 
 def archive_zip(content_dir: Path, dest_file: Path):
     return run_process("zip", "-r", str(dest_file.resolve()), ".", cwd=str(content_dir))
 
 
-def unix_cp(src: str, dest: str):
-    return run_process("cp", "-r", "-f", src, dest)
+def move_merge_replace(src: Path, dest_dir: Path):
+    dest = dest_dir.joinpath(src.name)
+    if src == dest:
+        return
+    if not dest_dir.exists():
+        dest_dir.mkdir(parents=True)
+    if src.is_dir():
+        shutil.copytree(src, dest, dirs_exist_ok=True)
+        shutil.rmtree(src)
+    else:
+        shutil.copy2(src, dest)
+        os.remove(src)
 
 
 def file_is_type(file: Path, type: str):
@@ -150,7 +164,6 @@ def install_name_change(binary: Path, old: Path, new: Path):
 
 
 def insert_dylib(binary: Path, path: Path):
-    print("Linking", binary, path)
     return run_process("./insert_dylib", "--inplace", "--no-strip-codesig", str(path), str(binary))
 
 
@@ -171,47 +184,38 @@ def inject_tweaks(ipa_dir: Path, tweaks_dir: Path):
             elif tweak.suffix == ".deb":
                 extract_deb(app_bin.name, app_bundle_id, tweak, temp_dir)
             else:
-                tweak.rename(temp_dir.joinpath(tweak.name))
+                move_merge_replace(tweak, temp_dir)
 
-        for component_name, dest_name in {"*.framework": "Frameworks/", "*.dylib": "PlugIns/"}.items():
-            components = list(temp_dir.glob("**/" + component_name))
-            if len(components) > 0:
-                dest_dir = temp_dir.joinpath(dest_name)
-                dest_dir.mkdir(exist_ok=True)
-                for component in components:
-                    component.rename(dest_dir.joinpath(component.name))
+        for glob in ["*.framework", "*.dylib"]:
+            for file in temp_dir.glob(glob):
+                move_merge_replace(file, temp_dir.joinpath("Frameworks"))
 
         binary_map = {file.name: file for file in temp_dir.glob("**/*") if file_is_type(file, "Mach-O")}
         for binary in binary_map.values():
+            binary_path = Path("@executable_path").joinpath(binary_map[Path(binary).name].relative_to(temp_dir))
             if binary.suffix == ".dylib":
-                insert_dylib(
-                    app_bin,
-                    Path("@executable_path").joinpath(binary_map[Path(binary).name].relative_to(temp_dir)),
-                )
+                print("Injecting", binary, binary_path)
+                insert_dylib(app_bin, binary_path)
             for link in get_otool_imports(binary):
                 link_path = Path(link)
                 if link_path.name in ["libsubstitute.dylib", "libsubstrate.dylib", "CydiaSubstrate"]:
                     substrate_src = Path("./CydiaSubstrate.framework")
                     substrate_dest = temp_dir.joinpath("Frameworks", "CydiaSubstrate.framework")
+                    substrate_path = Path("@executable_path").joinpath(
+                        substrate_dest.joinpath("CydiaSubstrate").relative_to(temp_dir)
+                    )
                     if not substrate_dest.exists():
                         print("Installing CydiaSubstrate to", substrate_dest)
-                        substrate_dest.parent.mkdir(exist_ok=True)
+                        substrate_dest.parent.mkdir(exist_ok=True, parents=True)
                         shutil.copytree(substrate_src, substrate_dest)
-                    install_name_change(
-                        binary,
-                        link_path,
-                        Path("@executable_path").joinpath(
-                            substrate_dest.joinpath("CydiaSubstrate").relative_to(temp_dir)
-                        ),
-                    )
+                    print("Re-linking", binary, link_path, substrate_path)
+                    install_name_change(binary, link_path, substrate_path)
                 elif link_path.name in binary_map:
-                    install_name_change(
-                        binary,
-                        link_path,
-                        Path("@executable_path").joinpath(binary_map[Path(link).name].relative_to(temp_dir)),
-                    )
+                    print("Re-linking", binary, link_path, binary_path)
+                    install_name_change(binary, link_path, binary_path)
 
-        unix_cp(str(temp_dir) + "/", str(app_dir) + "/")
+        for file in temp_dir.glob("*"):
+            move_merge_replace(file, app_dir)
 
 
 def setup_account(account_name_file: Path, account_pass_file: Path):
