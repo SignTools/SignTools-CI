@@ -205,7 +205,7 @@ class Signer:
                 print("Using provisioning profile's application id")
                 prov_app_id = dump_prov_entitlements(opts.prov_file)["application-identifier"]
                 self.main_bundle_id = prov_app_id[prov_app_id.find(".") + 1 :]
-                if "*" in self.main_bundle_id:
+                if self.main_bundle_id == "*":
                     print("Provisioning profile is wildcard, using original bundle id")
                     self.main_bundle_id = self.old_main_bundle_id
             else:
