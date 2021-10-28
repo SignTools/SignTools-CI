@@ -353,7 +353,13 @@ class Signer:
         # create bundle id by suffixing the existing main bundle id with the original suffix
         bundle_id = f"{self.main_bundle_id}{old_bundle_id[len(self.old_main_bundle_id):]}"
         if not self.opts.force_original_id and old_bundle_id != bundle_id:
-            self.mappings[old_bundle_id] = bundle_id
+            if len(old_bundle_id) != len(bundle_id):
+                print(
+                    f"WARNING: Component's bundle id '{bundle_id}' is different length from the original bundle id '{old_bundle_id}'.",
+                    "The signed app may crash!",
+                )
+            else:
+                self.mappings[old_bundle_id] = bundle_id
 
         with tempfile.NamedTemporaryFile(dir=workdir, suffix=".plist", delete=False) as f:
             entitlements_plist = Path(f.name)
@@ -460,7 +466,7 @@ class Signer:
             for entitlement, value in {
                 "com.apple.developer.icloud-container-environment": "Development",
                 "aps-environment": "development",
-                "get-task-allow": True
+                "get-task-allow": True,
             }.items():
                 if entitlement in entitlements:
                     entitlements[entitlement] = value
@@ -532,6 +538,7 @@ class Signer:
 
             print("ID mappings:")
             print_object(self.mappings)
+            assert all(len(k) == len(v) for k, v in self.mappings.items())
 
             print("Removed entitlements:")
             print_object(list(self.removed_entitlements))
