@@ -398,10 +398,10 @@ class Signer:
             # if the prov file has wildcard app id, expand it, or it would be invalid
             if prov_app_id == wildcard_app_id:
                 entitlements["application-identifier"] = component_app_id
-            else:
+            elif prov_app_id != component_app_id:
                 print(
                     f"WARNING: Provisioning profile's app id '{prov_app_id}' does not match component's app id '{component_app_id}'.",
-                    "Using provisioning profile's app id - the component will run, but its entitlements will be broken!",
+                    "Using provisioning profile's app id - the component will run, but some functions such as file importing will not work!",
                     sep="\n",
                 )
 
