@@ -434,6 +434,7 @@ class Signer:
                     "com.apple.developer.kernel.extended-virtual-addressing",
                     "com.apple.developer.networking.multipath",
                     "com.apple.developer.networking.networkextension",
+                    "com.apple.developer.networking.vpn.api",
                     "com.apple.developer.networking.wifi-info",
                     "com.apple.developer.siri",
                     "com.apple.developer.ubiquity-container-identifiers",
