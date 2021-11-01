@@ -1,5 +1,4 @@
-import plistlib
-from typing import Match, Optional, List, Tuple
+from typing import Optional, List, Tuple
 import os
 from pathlib import Path
 from util import *
@@ -114,16 +113,15 @@ def extract_deb(app_bin_name: str, app_bundle_id: str, archive: Path, dest_dir: 
                         continue
                     file_plist = file.parent.joinpath(file.stem + ".plist")
                     if file_plist.exists():
-                        with file_plist.open("rb") as f:
-                            info = plistlib.load(f)
-                            if "Filter" in info:
-                                ok = False
-                                if "Bundles" in info["Filter"] and app_bundle_id in info["Filter"]["Bundles"]:
-                                    ok = True
-                                elif "Executables" in info["Filter"] and app_bin_name in info["Filter"]["Executables"]:
-                                    ok = True
-                                if not ok:
-                                    continue
+                        info = plist_load(file_plist)
+                        if "Filter" in info:
+                            ok = False
+                            if "Bundles" in info["Filter"] and app_bundle_id in info["Filter"]["Bundles"]:
+                                ok = True
+                            elif "Executables" in info["Filter"] and app_bin_name in info["Filter"]["Executables"]:
+                                ok = True
+                            if not ok:
+                                continue
                     move_merge_replace(file, dest_dir)
 
 
@@ -169,9 +167,8 @@ def insert_dylib(binary: Path, path: Path):
 
 def inject_tweaks(ipa_dir: Path, tweaks_dir: Path):
     app_dir = next(ipa_dir.glob("Payload/*"))
-    with app_dir.joinpath("Info.plist").open("rb") as f:
-        info = plistlib.load(f)
-        app_bundle_id = info["CFBundleIdentifier"]
+    info = plist_load(app_dir.joinpath("Info.plist"))
+    app_bundle_id = info["CFBundleIdentifier"]
     app_bin = app_dir.joinpath(app_dir.stem)
     with tempfile.TemporaryDirectory() as temp_dir_str:
         temp_dir = Path(temp_dir_str)

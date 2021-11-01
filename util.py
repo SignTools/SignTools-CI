@@ -1,11 +1,12 @@
 from pathlib import Path
+import plistlib
 import shutil
 import subprocess
 import random
 import string
-from typing import Any, Optional, Mapping, Union
+import tempfile
+from typing import IO, Any, Optional, Mapping, Union
 import json
-import os
 
 StrPath = Union[str, Path]
 
@@ -82,3 +83,22 @@ def extract_zip(archive: Path, dest_dir: Path):
 
 def print_object(obj: Any):
     print(json.dumps(obj, indent=4, sort_keys=True, default=str))
+
+
+def plutil_convert(plist: Path):
+    return run_process("plutil", "-convert", "xml1", "-o", "-", str(plist), capture=True).stdout
+
+
+def plist_load(plist: Path):
+    return plistlib.loads(plutil_convert(plist))
+
+
+def plist_loads(plist: str) -> Any:
+    with tempfile.NamedTemporaryFile(suffix=".plist", mode="w") as f:
+        f.write(plist)
+        f.flush()
+        return plist_load(Path(f.name))
+
+
+def plist_dump(data: Any, f: IO[bytes]):
+    return plistlib.dump(data, f)

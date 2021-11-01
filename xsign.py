@@ -32,7 +32,7 @@ def codesign_dump_entitlements(component: Path) -> Dict[Any, Any]:
     entitlements_str = decode_clean(
         run_process("/usr/bin/codesign", "--no-strict", "-d", "--entitlements", ":-", str(component)).stdout
     )
-    return plistlib.loads(entitlements_str.encode("utf-8"))
+    return plist_loads(entitlements_str)
 
 
 def binary_replace(pattern: str, f: Path):
@@ -97,7 +97,7 @@ def xcode_export(project_dir: Path, archive: Path, export_dir: Path):
 def _xcode_export(project_dir: Path, archive: Path, export_dir: Path):
     options_plist = export_dir.joinpath("options.plist")
     with options_plist.open("wb") as f:
-        plistlib.dump({"method": "ad-hoc", "iCloudContainerEnvironment": "Production"}, f)
+        plist_dump({"method": "ad-hoc", "iCloudContainerEnvironment": "Production"}, f)
     return run_process(
         "xcodebuild",
         "-allowProvisioningUpdates",
@@ -116,7 +116,7 @@ def _xcode_export(project_dir: Path, archive: Path, export_dir: Path):
 
 def dump_prov(prov_file: Path) -> Dict[Any, Any]:
     s = security_dump_prov(prov_file)
-    return plistlib.loads(s.encode("utf-8"))
+    return plist_loads(s)
 
 
 def dump_prov_entitlements(prov_file: Path) -> Dict[Any, Any]:
@@ -189,8 +189,7 @@ class Signer:
         self.opts = opts
         main_app = next(opts.app_dir.glob("Payload/*.app"))
         main_info_plist = main_app.joinpath("Info.plist")
-        with main_info_plist.open("rb") as f:
-            main_info: Dict[Any, Any] = plistlib.load(f)
+        main_info: Dict[Any, Any] = plist_load(main_info_plist)
         self.old_main_bundle_id = main_info["CFBundleIdentifier"]
         self.is_distribution = "Distribution" in opts.common_name
 
@@ -235,7 +234,7 @@ class Signer:
                 f.write(self.main_bundle_id)
 
         with main_info_plist.open("wb") as f:
-            plistlib.dump(main_info, f)
+            plist_dump(main_info, f)
 
         for watch_name in ["com.apple.WatchPlaceholder", "Watch"]:
             watch_dir = main_app.joinpath(watch_name)
@@ -299,12 +298,10 @@ class Signer:
                 for prov_profile in prov_profiles:
                     os.remove(prov_profile)
                 with data.entitlements_plist.open("wb") as f:
-                    plistlib.dump(codesign_dump_entitlements(output_bin), f)
+                    plist_dump(codesign_dump_entitlements(output_bin), f)
 
-        with data.info_plist.open("rb") as f:
-            info = plistlib.load(f)
-        with data.entitlements_plist.open("rb") as f:
-            entitlements = plistlib.load(f)
+        info = plist_load(data.info_plist)
+        entitlements = plist_load(data.entitlements_plist)
 
         if self.opts.force_original_id:
             print("Keeping original CFBundleIdentifier")
@@ -332,9 +329,9 @@ class Signer:
             info["UISupportsDocumentBrowser"] = True
 
         with data.info_plist.open("wb") as f:
-            plistlib.dump(info, f)
+            plist_dump(info, f)
         with data.entitlements_plist.open("wb") as f:
-            plistlib.dump(entitlements, f)
+            plist_dump(entitlements, f)
 
         print("Signing with entitlements:")
         print_object(entitlements)
@@ -346,8 +343,7 @@ class Signer:
         workdir: Path,
     ):
         info_plist = component.joinpath("Info.plist")
-        with info_plist.open("rb") as f:
-            info: Dict[Any, Any] = plistlib.load(f)
+        info: Dict[Any, Any] = plist_load(info_plist)
         embedded_prov = component.joinpath("embedded.mobileprovision")
         old_bundle_id = info["CFBundleIdentifier"]
         # create bundle id by suffixing the existing main bundle id with the original suffix
@@ -520,7 +516,7 @@ class Signer:
                                 entitlements[entitlement] = entitlements[entitlement][0]
 
         with entitlements_plist.open("wb") as f:
-            plistlib.dump(entitlements, f)
+            plist_dump(entitlements, f)
 
         return ComponentData(old_bundle_id, bundle_id, entitlements_plist, info_plist, embedded_prov)
 
