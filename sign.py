@@ -166,7 +166,7 @@ def insert_dylib(binary: Path, path: Path):
 
 
 def inject_tweaks(ipa_dir: Path, tweaks_dir: Path):
-    app_dir = next(ipa_dir.glob("Payload/*"))
+    app_dir = next(ipa_dir.glob("Payload/*.app"))
     info = plist_load(app_dir.joinpath("Info.plist"))
     app_bundle_id = info["CFBundleIdentifier"]
     app_bin = app_dir.joinpath(app_dir.stem)
