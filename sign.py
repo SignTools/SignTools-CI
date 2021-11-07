@@ -268,7 +268,9 @@ def setup_account(account_name_file: Path, account_pass_file: Path):
             code_entered = True
         time.sleep(1)
 
+    teams = decode_clean(osascript(Path("login4.applescript"), timeout=10).stderr).splitlines()
     kill_xcode()
+    return teams
 
 
 def run():
@@ -285,9 +287,15 @@ def run():
     prov_profile = Path("prov.mobileprovision")
     account_name_file = Path("account_name.txt")
     account_pass_file = Path("account_pass.txt")
+    is_free_account = False
     bundle_name = Path("bundle_name.txt")
     if account_name_file.is_file() and account_pass_file.is_file():
-        setup_account(account_name_file, account_pass_file)
+        teams = setup_account(account_name_file, account_pass_file)
+        if len(teams) < 1 or teams[0].strip() == "":
+            raise Exception("Unable to read account teams")
+        if len(teams) == 1 and teams[0].endswith("(Personal Team)"):
+            print("Detected free developer account")
+            is_free_account = True
     elif prov_profile.is_file():
         print("Using provisioning profile")
     else:
@@ -309,6 +317,7 @@ def run():
                 temp_dir,
                 common_name,
                 team_id,
+                is_free_account,
                 prov_profile if prov_profile.is_file() else None,
                 "" if "-n" in sign_args else user_bundle_id,
                 read_file(bundle_name) if bundle_name.exists() else None,

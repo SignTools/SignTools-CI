@@ -136,6 +136,7 @@ class SignOpts(NamedTuple):
     app_dir: Path
     common_name: str
     team_id: str
+    is_free_account: bool
     prov_file: Optional[Path]
     bundle_id: Optional[str]
     bundle_name: Optional[str]
@@ -413,34 +414,38 @@ class Signer:
                 for item in old_entitlements.get("keychain-access-groups", []):
                     keychain.append(f"{self.opts.team_id}.{item[item.index('.')+1:]}")
         else:
+            supported_entitlements = [
+                "com.apple.developer.default-data-protection",
+                "com.apple.developer.healthkit",
+                "com.apple.developer.healthkit.access",
+                "com.apple.developer.homekit",
+                "com.apple.external-accessory.wireless-configuration",
+                "com.apple.security.application-groups",
+                "inter-app-audio",
+                "get-task-allow",
+                "keychain-access-groups",
+            ]
+            if not self.opts.is_free_account:
+                supported_entitlements.extend(
+                    [
+                        "aps-environment",
+                        "com.apple.developer.icloud-container-development-container-identifiers",
+                        "com.apple.developer.icloud-container-environment",
+                        "com.apple.developer.icloud-container-identifiers",
+                        "com.apple.developer.icloud-services",
+                        "com.apple.developer.kernel.extended-virtual-addressing",
+                        "com.apple.developer.networking.multipath",
+                        "com.apple.developer.networking.networkextension",
+                        "com.apple.developer.networking.vpn.api",
+                        "com.apple.developer.networking.wifi-info",
+                        "com.apple.developer.siri",
+                        "com.apple.developer.ubiquity-container-identifiers",
+                        "com.apple.developer.ubiquity-kvstore-identifier",
+                    ]
+                )
             entitlements = copy.deepcopy(old_entitlements)
-
-            # only keep tested and supported entitlements
             for entitlement in list(entitlements):
-                if entitlement not in [
-                    "aps-environment",
-                    "com.apple.developer.default-data-protection",
-                    "com.apple.developer.healthkit",
-                    "com.apple.developer.healthkit.access",
-                    "com.apple.developer.homekit",
-                    "com.apple.external-accessory.wireless-configuration",
-                    "inter-app-audio",
-                    "com.apple.developer.icloud-container-development-container-identifiers",
-                    "com.apple.developer.icloud-container-environment",
-                    "com.apple.developer.icloud-container-identifiers",
-                    "com.apple.developer.icloud-services",
-                    "com.apple.developer.kernel.extended-virtual-addressing",
-                    "com.apple.developer.networking.multipath",
-                    "com.apple.developer.networking.networkextension",
-                    "com.apple.developer.networking.vpn.api",
-                    "com.apple.developer.networking.wifi-info",
-                    "com.apple.developer.siri",
-                    "com.apple.developer.ubiquity-container-identifiers",
-                    "com.apple.developer.ubiquity-kvstore-identifier",
-                    "com.apple.security.application-groups",
-                    "get-task-allow",
-                    "keychain-access-groups",
-                ]:
+                if entitlement not in supported_entitlements:
                     self.removed_entitlements.add(entitlement)
                     entitlements.pop(entitlement)
 
