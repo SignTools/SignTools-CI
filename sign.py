@@ -268,9 +268,6 @@ def setup_account(account_name_file: Path, account_pass_file: Path):
             code_entered = True
         time.sleep(1)
 
-    if osascript(Path("login4.applescript"), check=False, timeout=10).returncode != 0:
-        raise Exception("Certificate is revoked. Please provide a new one.")
-
     kill_xcode()
 
 
