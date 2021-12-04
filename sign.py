@@ -19,6 +19,7 @@ def curl_with_auth(
     form_data: List[Tuple[str, str]] = [],
     output: Optional[Path] = None,
     check: bool = True,
+    capture: bool = True,
 ):
     args = map(lambda x: ["-F", f"{x[0]}={x[1]}"], form_data)
     args = [item for sublist in args for item in sublist]
@@ -26,11 +27,12 @@ def curl_with_auth(
         args.extend(["-o", str(output)])
     return run_process(
         "curl",
-        *["-s", "-S", "-f", "-L", "-H"],
+        *["-S", "-f", "-L", "-H"],
         f"Authorization: Bearer {secret_key}",
         *args,
         url,
         check=check,
+        capture=capture,
     )
 
 
@@ -339,13 +341,14 @@ def run():
     curl_with_auth(
         f"{secret_url}/jobs/{job_id}/signed",
         [("file", "@" + str(signed_ipa)), ("bundle_id", bundle_id)],
+        capture=False,
     )
 
 
 if __name__ == "__main__":
     print("Obtaining files...")
     job_archive = Path("job.tar")
-    curl_with_auth(secret_url + "/jobs", output=job_archive)
+    curl_with_auth(secret_url + "/jobs", output=job_archive, capture=False)
     extract_tar(job_archive, Path("."))
     os.remove(job_archive)
 
