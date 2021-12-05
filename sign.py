@@ -14,6 +14,25 @@ secret_key = os.path.expandvars("$SECRET_KEY")
 old_keychain: Optional[str] = None
 
 
+def network_init():
+    return run_process("npm", "install", cwd="node-utils")
+
+
+def node_upload(file: Path, endpoint: str, capture: bool = True):
+    return run_process("node", "node-utils/upload.js", str(file), endpoint, secret_key, capture=capture)
+
+
+def node_download(downloadUrl: str, outputFile: Path, capture: bool = True):
+    return run_process(
+        "node",
+        "node-utils/download.js",
+        downloadUrl,
+        secret_key,
+        str(outputFile),
+        capture=capture,
+    )
+
+
 def curl_with_auth(
     url: str,
     form_data: List[Tuple[str, str]] = [],
@@ -337,18 +356,19 @@ def run():
         archive_zip(temp_dir, signed_ipa)
 
     print("Uploading...")
+    node_upload(signed_ipa, f"{secret_url}/jobs/{job_id}/tus/", capture=False)
+    file_id = read_file(Path("file_id.txt"))
     bundle_id = read_file(Path("bundle_id.txt"))
-    curl_with_auth(
-        f"{secret_url}/jobs/{job_id}/signed",
-        [("file", "@" + str(signed_ipa)), ("bundle_id", bundle_id)],
-        capture=False,
-    )
+    curl_with_auth(f"{secret_url}/jobs/{job_id}/signed", [("file_id", file_id), ("bundle_id", bundle_id)])
 
 
 if __name__ == "__main__":
+    print("Initializing dependencies...")
+    network_init()
+
     print("Obtaining files...")
     job_archive = Path("job.tar")
-    curl_with_auth(secret_url + "/jobs", output=job_archive, capture=False)
+    node_download(secret_url + "/jobs", job_archive, capture=False)
     extract_tar(job_archive, Path("."))
     os.remove(job_archive)
 
