@@ -9,8 +9,6 @@ The following providers are supported:
 
 You only need to configure one provider.
 
-> ### :warning: Developer accounts are only supported on GitHub Actions for now!
-
 ## Repository setup
 
 First you need to create your own `SignTools-CI` repository:
@@ -25,6 +23,8 @@ Alternatively, you can also manually clone this repo into a new private reposito
 ## Provider setup
 
 You now need to configure a CI provider. **You only need one**:
+
+> ### :warning: Developer accounts are only supported on GitHub Actions for now!
 
 ### GitHub Actions
 
