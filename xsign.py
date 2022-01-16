@@ -565,7 +565,11 @@ class Signer:
 
                 sc_info = component.joinpath("SC_Info")
                 if sc_info.exists():
-                    print(f"Removing leftover AppStore data")
+                    print(
+                        f"WARNING: Found leftover AppStore metadata - removing it.",
+                        "If the app is encrypted, it will fail to launch!",
+                        sep="\n",
+                    )
                     shutil.rmtree(sc_info)
 
                 if self.opts.patch_ids:
