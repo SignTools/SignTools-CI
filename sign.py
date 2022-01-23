@@ -209,12 +209,12 @@ def inject_tweaks(ipa_dir: Path, tweaks_dir: Path):
                 move_merge_replace(file, temp_dir.joinpath("Frameworks"))
 
         binary_map = {file.name: file for file in temp_dir.glob("**/*") if file_is_type(file, "Mach-O")}
-        for binary in binary_map.values():
-            binary_path = Path("@executable_path").joinpath(binary_map[Path(binary).name].relative_to(temp_dir))
-            if binary.suffix == ".dylib":
-                print("Injecting", binary, binary_path)
-                insert_dylib(app_bin, binary_path)
-            for link in get_otool_imports(binary):
+        for binary_path in binary_map.values():
+            binary_fixed = Path("@executable_path").joinpath(binary_path.relative_to(temp_dir))
+            if binary_path.suffix == ".dylib":
+                print("Injecting", binary_path, binary_fixed)
+                insert_dylib(app_bin, binary_fixed)
+            for link in get_otool_imports(binary_path):
                 link_path = Path(link)
                 if link_path.name in ["libsubstitute.dylib", "libsubstrate.dylib", "CydiaSubstrate"]:
                     substrate_src = Path("./CydiaSubstrate.framework")
@@ -226,11 +226,12 @@ def inject_tweaks(ipa_dir: Path, tweaks_dir: Path):
                         print("Installing CydiaSubstrate to", substrate_dest)
                         substrate_dest.parent.mkdir(exist_ok=True, parents=True)
                         shutil.copytree(substrate_src, substrate_dest)
-                    print("Re-linking", binary, link_path, substrate_path)
-                    install_name_change(binary, link_path, substrate_path)
+                    print("Re-linking", binary_path, link_path, substrate_path)
+                    install_name_change(binary_path, link_path, substrate_path)
                 elif link_path.name in binary_map:
-                    print("Re-linking", binary, link_path, binary_path)
-                    install_name_change(binary, link_path, binary_path)
+                    link_fixed = Path("@executable_path").joinpath(binary_map[link_path.name].relative_to(temp_dir))
+                    print("Re-linking", binary_path, link_path, link_fixed)
+                    install_name_change(binary_path, link_path, link_fixed)
 
         for file in temp_dir.glob("*"):
             move_merge_replace(file, app_dir)
