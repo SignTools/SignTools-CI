@@ -344,6 +344,7 @@ def run():
                 read_file(bundle_name) if bundle_name.exists() else None,
                 "-d" in sign_args,
                 "-a" in sign_args,
+                "-m" in sign_args,
                 "-s" in sign_args,
                 "-e" in sign_args,
                 "-p" in sign_args,

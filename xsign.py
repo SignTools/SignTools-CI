@@ -142,6 +142,7 @@ class SignOpts(NamedTuple):
     bundle_name: Optional[str]
     patch_debug: bool
     patch_all_devices: bool
+    patch_mac: bool
     patch_file_sharing: bool
     encode_ids: bool
     patch_ids: bool
@@ -322,6 +323,17 @@ class Signer:
             info.pop("UISupportedDevices", False)
             # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/iPhoneOSKeys.html
             info["UIDeviceFamily"] = [1, 2, 3, 4]  # iOS, iPadOS, tvOS, watchOS
+
+        if self.opts.patch_mac:
+            info.pop("UIRequiresFullScreen", False)
+            for device in ["ipad", "iphone", "ipod"]:
+                info.pop("UISupportedInterfaceOrientations~" + device, False)
+            info["UISupportedInterfaceOrientations"] = [
+                "UIInterfaceOrientationPortrait",
+                "UIInterfaceOrientationPortraitUpsideDown",
+                "UIInterfaceOrientationLandscapeLeft",
+                "UIInterfaceOrientationLandscapeRight",
+            ]
 
         if self.opts.patch_file_sharing:
             print("Force enabling file sharing")
