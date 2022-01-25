@@ -386,7 +386,10 @@ class Signer:
         if not old_team_id:
             print("Failed to read old team id")
         elif old_team_id != self.opts.team_id:
-            self.mappings[old_team_id] = self.opts.team_id
+            if len(old_team_id) != len(self.opts.team_id):
+                print("WARNING: Team ID length mismatch:", old_team_id, self.opts.team_id)
+            else:
+                self.mappings[old_team_id] = self.opts.team_id
 
         # before 2011 this was known as 'bundle seed id' and could be set freely
         # now it is always equal to team id, but some old apps haven't updated
@@ -395,7 +398,10 @@ class Signer:
             old_app_id_prefix = None
             print("Failed to read old app id prefix")
         elif old_app_id_prefix != self.opts.team_id:
-            self.mappings[old_app_id_prefix] = self.opts.team_id
+            if len(old_app_id_prefix) != len(self.opts.team_id):
+                print("WARNING: App ID Prefix length mismatch:", old_app_id_prefix, self.opts.team_id)
+            else:
+                self.mappings[old_app_id_prefix] = self.opts.team_id
 
         if self.opts.prov_file is not None:
             shutil.copy2(self.opts.prov_file, embedded_prov)
@@ -554,6 +560,7 @@ class Signer:
 
             print("ID mappings:")
             print_object(self.mappings)
+            # ensure all mappings are same length and actually byte patchable
             assert all(len(k) == len(v) for k, v in self.mappings.items())
 
             print("Removed entitlements:")
