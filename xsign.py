@@ -35,6 +35,8 @@ def codesign_dump_entitlements(component: Path) -> Dict[Any, Any]:
 
 
 def binary_replace(pattern: str, f: Path):
+    if not f.exists() or not f.is_file():
+        raise Exception(f, "does not exist or is a directory")
     return run_process("perl", "-p", "-i", "-e", pattern, str(f))
 
 
@@ -598,12 +600,14 @@ class Signer:
                     patches = dict(sorted(self.mappings.items(), key=lambda x: len(x[0]), reverse=True))
 
                     print("Applying patches...")
-                    component_bin = component.joinpath(component.stem)
-                    targets = [component_bin]
+                    targets = [
+                        x for x in [component, component.joinpath(component.stem)] if x.exists() and x.is_file()
+                    ]
                     if data is not None:
                         targets.append(data.info_plist)
                     for target in targets:
                         for old, new in patches.items():
+                            print("Patching", target)
                             binary_replace(f"s/{re.escape(old)}/{re.escape(new)}/g", target)
 
                 print("Signing")
