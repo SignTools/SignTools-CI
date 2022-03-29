@@ -1,19 +1,13 @@
 version: v1.0
-name: CI
+name: Initial Pipeline
 agent:
   machine:
-    type: a1-standard-4
-    os_image: macos-xcode12
-execution_time_limit:
-  minutes: 30
-
+    type: e1-standard-2
+    os_image: ubuntu2004
 blocks:
-  - name: Sign
+  - name: 'Block #1'
     task:
       jobs:
-        - name: Sign
+        - name: 'Job #1'
           commands:
             - checkout
-            - ./sign.sh
-      secrets:
-        - name: ios-signer
