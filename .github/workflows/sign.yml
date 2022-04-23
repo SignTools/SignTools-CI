@@ -12,7 +12,7 @@ jobs:
       SECRET_KEY: "${{ secrets.SECRET_KEY }}"
     steps:
       - name: Checkout
-        uses: actions/checkout@v2
+        uses: actions/checkout@v3
       - name: Sign
         run: |
           sudo xcode-select -s /Applications/Xcode_12.5.1.app
