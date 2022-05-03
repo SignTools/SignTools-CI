@@ -325,7 +325,8 @@ class Signer:
             info.pop("UISupportedDevices", False)
             # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/iPhoneOSKeys.html
             info["UIDeviceFamily"] = [1, 2, 3, 4]  # iOS, iPadOS, tvOS, watchOS
-
+            # https://developer.apple.com/documentation/bundleresources/information_property_list/minimumosversion
+            info["MinimumOSVersion"] = "3.0"
         if self.opts.patch_mac:
             info.pop("UIRequiresFullScreen", False)
             for device in ["ipad", "iphone", "ipod"]:
