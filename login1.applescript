@@ -37,16 +37,21 @@ tell application "System Events" to tell process "Xcode"
             end repeat
             -- leave default account type "Apple ID"
             key code 76
-            repeat while not (exists button "Next")
+            repeat while not (exists sheet 1)
                 delay 0.1
             end repeat
-            keystroke (system attribute "ACCOUNT_NAME")
-            key code 76
-            repeat while not (exists static text "Password:")
-                delay 0.1
-            end repeat
-            keystroke (system attribute "ACCOUNT_PASS")
-            key code 76
+            tell sheet 1
+                repeat while not (exists button "Next")
+                    delay 0.1
+                end repeat
+                keystroke (system attribute "ACCOUNT_NAME")
+                key code 76
+                repeat while not (exists static text "Password:")
+                    delay 0.1
+                end repeat
+                keystroke (system attribute "ACCOUNT_PASS")
+                key code 76
+            end tell
         end tell
     end tell
 end tell
