@@ -44,33 +44,7 @@ def security_dump_prov(f: Path):
     return decode_clean(run_process("security", "cms", "-D", "-i", str(f)).stdout)
 
 
-def exec_retry(name: str, func: Callable[[], CompletedProcess[bytes]]):
-    start_time = time.time()
-    last_error: Optional[Exception] = None
-    retry_count = 0
-    while retry_count < 3 and time.time() - start_time < 120:
-        try:
-            return func()
-        except Exception as e:
-            last_error = e
-            if not isinstance(e.__cause__, TimeoutExpired):
-                retry_count += 1
-            print(f"{name} errored, retrying")
-    if last_error is None:
-        raise Exception(f"{name} had an unknown error")
-    raise last_error
-
-
 def xcode_archive(project_dir: Path, scheme_name: str, archive: Path):
-    # Xcode needs to be open to "cure" hanging issues
-    open_xcode(project_dir)
-    try:
-        return exec_retry("xcode_archive", lambda: _xcode_archive(project_dir, scheme_name, archive))
-    finally:
-        kill_xcode()
-
-
-def _xcode_archive(project_dir: Path, scheme_name: str, archive: Path):
     return run_process(
         "xcodebuild",
         "-allowProvisioningUpdates",
@@ -87,15 +61,6 @@ def _xcode_archive(project_dir: Path, scheme_name: str, archive: Path):
 
 
 def xcode_export(project_dir: Path, archive: Path, export_dir: Path):
-    # Xcode needs to be open to "cure" hanging issues
-    open_xcode(project_dir)
-    try:
-        return exec_retry("xcode_export", lambda: _xcode_export(project_dir, archive, export_dir))
-    finally:
-        kill_xcode()
-
-
-def _xcode_export(project_dir: Path, archive: Path, export_dir: Path):
     options_plist = export_dir.joinpath("options.plist")
     with options_plist.open("wb") as f:
         plist_dump({"method": "ad-hoc", "iCloudContainerEnvironment": "Production"}, f)
