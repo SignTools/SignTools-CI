@@ -216,7 +216,7 @@ def inject_tweaks(ipa_dir: Path, tweaks_dir: Path):
                 insert_dylib(app_bin, binary_fixed)
             for link in get_otool_imports(binary_path):
                 link_path = Path(link)
-                if link_path.name in ["libsubstitute.dylib", "libsubstrate.dylib", "CydiaSubstrate"]:
+                if link_path.name in ["libsubstrate.dylib", "CydiaSubstrate"]:
                     substrate_src = Path("./CydiaSubstrate.framework")
                     substrate_dest = temp_dir.joinpath("Frameworks", "CydiaSubstrate.framework")
                     substrate_path = Path("@executable_path").joinpath(
