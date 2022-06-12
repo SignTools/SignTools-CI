@@ -186,6 +186,10 @@ def insert_dylib(binary: Path, path: Path):
     return run_process("./insert_dylib", "--inplace", "--no-strip-codesig", str(path), str(binary))
 
 
+def get_binary_map(dir: Path):
+    return {file.name: file for file in dir.glob("**/*") if file_is_type(file, "Mach-O")}
+
+
 def inject_tweaks(ipa_dir: Path, tweaks_dir: Path):
     app_dir = next(ipa_dir.glob("Payload/*.app"))
     info = plist_load(app_dir.joinpath("Info.plist"))
@@ -208,28 +212,54 @@ def inject_tweaks(ipa_dir: Path, tweaks_dir: Path):
             for file in temp_dir.glob(glob):
                 move_merge_replace(file, temp_dir.joinpath("Frameworks"))
 
-        binary_map = {file.name: file for file in temp_dir.glob("**/*") if file_is_type(file, "Mach-O")}
+        # NOTE: https://iphonedev.wiki/index.php/Cydia_Substrate
+        # hooking with "MSHookFunction" does not work in a jailed environment using any of the libs
+        # libsubstrate will silently fail and continue, while the rest will crash the app
+        # if you're a tweak developer, use fishhook instead, though it only works on public symbols
+        support_libs = {
+            # Path("./libhooker"): ["libhooker.dylib", "libblackjack.dylib"],
+            # Path("./libsubstitute"): ["libsubstitute.dylib", "libsubstitute.0.dylib"],
+            Path("./libsubstrate"): ["libsubstrate.dylib", "CydiaSubstrate"],
+        }
+        aliases = {
+            "libsubstitute.0.dylib": "libsubstitute.dylib",
+            "CydiaSubstrate": "libsubstrate.dylib",
+        }
+
+        binary_map = get_binary_map(temp_dir)
+
+        # inject any user dylibs
         for binary_path in binary_map.values():
             binary_fixed = Path("@executable_path").joinpath(binary_path.relative_to(temp_dir))
             if binary_path.suffix == ".dylib":
                 print("Injecting", binary_path, binary_fixed)
                 insert_dylib(app_bin, binary_fixed)
+
+        # detect any references to support libs and install missing files
+        for binary_path in binary_map.values():
             for link in get_otool_imports(binary_path):
                 link_path = Path(link)
-                if link_path.name in ["libsubstrate.dylib", "CydiaSubstrate"]:
-                    substrate_src = Path("./CydiaSubstrate.framework")
-                    substrate_dest = temp_dir.joinpath("Frameworks", "CydiaSubstrate.framework")
-                    substrate_path = Path("@executable_path").joinpath(
-                        substrate_dest.joinpath("CydiaSubstrate").relative_to(temp_dir)
-                    )
-                    if not substrate_dest.exists():
-                        print("Installing CydiaSubstrate to", substrate_dest)
-                        substrate_dest.parent.mkdir(exist_ok=True, parents=True)
-                        shutil.copytree(substrate_src, substrate_dest)
-                    print("Re-linking", binary_path, link_path, substrate_path)
-                    install_name_change(binary_path, link_path, substrate_path)
-                elif link_path.name in binary_map:
-                    link_fixed = Path("@executable_path").joinpath(binary_map[link_path.name].relative_to(temp_dir))
+                for lib_dir, lib_names in support_libs.items():
+                    if link_path.name not in lib_names:
+                        continue
+                    print("Detected", lib_dir.name)
+                    for lib_src in lib_dir.glob("*"):
+                        lib_dest = temp_dir.joinpath("Frameworks").joinpath(lib_src.name)
+                        if not lib_dest.exists():
+                            print(f"Installing {lib_src.name} to {lib_dest}")
+                            lib_dest.parent.mkdir(exist_ok=True, parents=True)
+                            shutil.copy2(lib_src, lib_dest)
+
+        # refresh the binary map with any new libs from previous step
+        binary_map = get_binary_map(temp_dir)
+
+        # re-link any dependencies
+        for binary_path in binary_map.values():
+            for link in get_otool_imports(binary_path):
+                link_path = Path(link)
+                link_name = aliases[link_path.name] if link_path.name in aliases else link_path.name
+                if link_name in binary_map:
+                    link_fixed = Path("@executable_path").joinpath(binary_map[link_name].relative_to(temp_dir))
                     print("Re-linking", binary_path, link_path, link_fixed)
                     install_name_change(binary_path, link_path, link_fixed)
 
