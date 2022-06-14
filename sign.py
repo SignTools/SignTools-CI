@@ -228,10 +228,13 @@ def inject_tweaks(ipa_dir: Path, tweaks_dir: Path):
 
         binary_map = get_binary_map(temp_dir)
 
-        # inject any user dylibs
+        # inject any user libs
         for binary_path in binary_map.values():
-            binary_fixed = Path("@executable_path").joinpath(binary_path.relative_to(temp_dir))
-            if binary_path.suffix == ".dylib":
+            binary_rel = binary_path.relative_to(temp_dir)
+            if binary_rel.parent.name == "Frameworks" or (
+                binary_rel.parent.suffix == ".framework" and binary_rel.parent.parent.name == "Frameworks"
+            ):
+                binary_fixed = Path("@executable_path").joinpath(binary_rel)
                 print("Injecting", binary_path, binary_fixed)
                 insert_dylib(app_bin, binary_fixed)
 
