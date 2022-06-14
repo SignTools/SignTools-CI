@@ -154,8 +154,7 @@ def move_merge_replace(src: Path, dest_dir: Path):
     dest = dest_dir.joinpath(src.name)
     if src == dest:
         return
-    if not dest_dir.exists():
-        dest_dir.mkdir(parents=True)
+    dest_dir.mkdir(exist_ok=True, parents=True)
     if src.is_dir():
         shutil.copytree(src, dest, dirs_exist_ok=True)
         shutil.rmtree(src)
@@ -208,9 +207,12 @@ def inject_tweaks(ipa_dir: Path, tweaks_dir: Path):
             else:
                 move_merge_replace(tweak, temp_dir)
 
-        for glob in ["*.framework", "*.dylib"]:
-            for file in temp_dir.glob(glob):
-                move_merge_replace(file, temp_dir.joinpath("Frameworks"))
+        # move files if we know where they need to go
+        move_map = {"Frameworks": ["*.framework", "*.dylib"], "PlugIns": ["*.appex"]}
+        for dest_dir, globs in move_map.items():
+            for glob in globs:
+                for file in temp_dir.glob(glob):
+                    move_merge_replace(file, temp_dir.joinpath(dest_dir))
 
         # NOTE: https://iphonedev.wiki/index.php/Cydia_Substrate
         # hooking with "MSHookFunction" does not work in a jailed environment using any of the libs
