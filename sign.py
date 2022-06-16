@@ -244,8 +244,10 @@ def inject_tweaks(ipa_dir: Path, tweaks_dir: Path):
         # inject any user libs
         for binary_path in binary_map.values():
             binary_rel = binary_path.relative_to(temp_dir)
-            if binary_rel.parent.name == "Frameworks" or (
-                binary_rel.parent.suffix == ".framework" and binary_rel.parent.parent.name == "Frameworks"
+            if (len(binary_rel.parts) == 2 and binary_rel.parent.name == "Frameworks") or (
+                len(binary_rel.parts) == 3
+                and binary_rel.parent.suffix == ".framework"
+                and binary_rel.parent.parent.name == "Frameworks"
             ):
                 binary_fixed = Path("@executable_path").joinpath(binary_rel)
                 print("Injecting", binary_path, binary_fixed)
