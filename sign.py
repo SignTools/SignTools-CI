@@ -125,10 +125,21 @@ def extract_deb(app_bin_name: str, app_bundle_id: str, archive: Path, dest_dir: 
                         else:
                             shutil.copy2(target, file)
 
-            for glob in ["Library/Application Support/*", "Library/Frameworks/*.framework"]:
+            for glob in [
+                "Library/Application Support/*/*.bundle",
+                "Library/Application Support/*",  # *.bundle, background@2x.png
+                "Library/Frameworks/*.framework",
+                "usr/lib/*.framework",
+            ]:
                 for file in temp_dir2.glob(glob):
+                    # skip empty directories
+                    if file.is_dir() and next(file.glob("*"), None) == None:
+                        continue
                     move_merge_replace(file, dest_dir)
-            for glob in ["Library/MobileSubstrate/DynamicLibraries/*.dylib", "usr/lib/**/*.dylib"]:
+            for glob in [
+                "Library/MobileSubstrate/DynamicLibraries/*.dylib",
+                "usr/lib/*.dylib",
+            ]:
                 for file in temp_dir2.glob(glob):
                     if not file.is_file():
                         continue
