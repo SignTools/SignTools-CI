@@ -1,5 +1,6 @@
 const request = require("request");
 const fs = require("fs");
+const { exit } = require("process");
 
 var args = process.argv.slice(2);
 if (args.length != 3) {
@@ -29,7 +30,17 @@ var req = request({
 });
 req.pipe(out);
 req.on("response", function (data) {
+  if (data.statusCode != 200) {
+    console.log(
+      `Non-200 response received: ${data.statusCode}. Is the URL correct?`
+    );
+    exit(2);
+  }
   totalBytes = parseInt(data.headers["content-length"]);
+});
+req.on("error", function (err) {
+  console.log(err.message);
+  exit(3);
 });
 req.on("data", function (chunk) {
   receivedBytes += chunk.length;

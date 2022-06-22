@@ -59,8 +59,8 @@ var options = {
   },
   parallelUploads: 4,
   fileReader: new FileReader(),
-  onError(error) {
-    console.log(error.message);
+  onError(err) {
+    console.log(err.message);
     exit(2);
   },
   onProgress(bytesUploaded, bytesTotal) {
@@ -72,7 +72,8 @@ var options = {
     clearInterval(progressHandle);
     fs.writeFile("file_id.txt", upload.url.split("/").pop(), (err) => {
       if (err) {
-        throw err;
+        console.log(err.message);
+        exit(3);
       }
     });
   },
