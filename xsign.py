@@ -472,6 +472,10 @@ class Signer:
                 if entitlement not in supported_entitlements:
                     self.removed_entitlements.add(entitlement)
                     entitlements.pop(entitlement)
+            
+            # Taurine jailbreak demands this entitlement, even if blank
+            if "keychain-access-groups" not in entitlements:
+                entitlements["keychain-access-groups"] = []
 
             # some apps define iCloud properties but without identifiers
             # this is pointless, but it also causes modern Xcode to fail - remove them
