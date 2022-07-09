@@ -348,11 +348,20 @@ def run():
     common_names = security_import(Path("cert.p12"), cert_pass, keychain_name)
     if len(common_names) < 1:
         raise Exception("No valid code signing certificate found, aborting.")
-    common_name = common_names[0]
-    for name in common_names:
-        if "Distribution" in name:
-            print("Using distribution certificate")
-            common_name = name
+    common_names = {
+        "Development": next((n for n in common_names if "Development" in n), None),
+        "Distribution": next((n for n in common_names if "Distribution" in n), None),
+    }
+
+    if common_names["Development"] is None:
+        raise Exception("No development certificate found, aborting.")
+
+    if common_names["Distribution"] is not None:
+        print("Using distribution certificate")
+        common_name = common_names["Distribution"]
+    else:
+        print("Using development certificate")
+        common_name = common_names["Development"]
 
     prov_profile = Path("prov.mobileprovision")
     account_name_file = Path("account_name.txt")
