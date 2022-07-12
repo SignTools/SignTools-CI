@@ -425,7 +425,7 @@ if __name__ == "__main__":
     print("Initializing dependencies...")
     network_init()
 
-    print("Obtaining files...")
+    print("Downloading job files...")
     job_archive = Path("job.tar")
     node_download(secret_url + "/jobs", job_archive, capture=False)
     extract_tar(job_archive, Path("."))
@@ -439,6 +439,10 @@ if __name__ == "__main__":
         user_bundle_id = None
     team_id = read_file("team_id.txt")
     keychain_name = "ios-signer-" + rand_str(8)
+
+    print("Downloading app...")
+    unsigned_ipa = Path("unsigned.ipa")
+    node_download(secret_url + f"/jobs/{job_id}/unsigned", unsigned_ipa, capture=False)
 
     try:
         failed = False
