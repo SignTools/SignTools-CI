@@ -57,7 +57,7 @@ var options = {
   headers: {
     Authorization: "Bearer " + key,
   },
-  parallelUploads: 4,
+  parallelUploads: 6,
   fileReader: new FileReader(),
   onError(err) {
     console.log(err.message);

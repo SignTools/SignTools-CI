@@ -14,7 +14,7 @@ var outputFile = args[2];
 var totalBytes = 0;
 
 new EasyDl(downloadUrl, outputFile, {
-  connections: 4,
+  connections: 6,
   maxRetry: 5,
   httpOptions: {
     headers: {
