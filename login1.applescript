@@ -41,15 +41,21 @@ tell application "System Events" to tell process "Xcode"
                 delay 0.1
             end repeat
             tell sheet 1
-                repeat while not (exists button "Next")
+                repeat while not (exists static text "Apple ID:")
                     delay 0.1
                 end repeat
                 keystroke (system attribute "ACCOUNT_NAME")
+                repeat while not (enabled of button "Next")
+                    delay 0.1
+                end repeat
                 click button "Next"
                 repeat while not (exists static text "Password:")
                     delay 0.1
                 end repeat
                 keystroke (system attribute "ACCOUNT_PASS")
+                repeat while not (enabled of button "Next")
+                    delay 0.1
+                end repeat
                 click button "Next"
             end tell
         end tell
