@@ -1072,7 +1072,9 @@ def run():
     if len(common_names) < 1:
         raise Exception("No valid code signing certificate found, aborting.")
     common_names = {
-        "Development": next((n for n in common_names if "Development" in n), None),
+        # "Apple Development" for paid dev account
+        # "iPhone Developer" for free dev account, etc
+        "Development": next((n for n in common_names if "Develop" in n), None),
         "Distribution": next((n for n in common_names if "Distribution" in n), None),
     }
 
