@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+
 # https://mypy.readthedocs.io/en/stable/runtime_troubles.html#using-classes-that-are-generic-in-stubs-but-not-at-runtime
 from __future__ import annotations
 

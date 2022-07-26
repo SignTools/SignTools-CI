@@ -16,4 +16,4 @@ jobs:
       - name: Sign
         run: |
           sudo xcode-select -s /Applications/Xcode_13.2.1.app
-          ./sign.sh
+          ./sign.py
