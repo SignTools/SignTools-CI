@@ -296,7 +296,7 @@ def install_name_change(binary: Path, old: Path, new: Path):
 
 
 def insert_dylib(binary: Path, path: Path):
-    return run_process("./insert_dylib", "--inplace", "--no-strip-codesig", str(path), str(binary))
+    return run_process("./insert_dylib", "--inplace", "--strip-codesig", "--all-yes", str(path), str(binary))
 
 
 def get_binary_map(dir: Path):
