@@ -44,7 +44,7 @@ tell application "System Events" to tell process "Xcode"
                 repeat while not (exists static text "Apple ID:")
                     delay 0.1
                 end repeat
-                keystroke (system attribute "ACCOUNT_NAME")
+                set value of text field 1 to (system attribute "ACCOUNT_NAME")
                 repeat while not (enabled of button "Next")
                     delay 0.1
                 end repeat
@@ -52,7 +52,7 @@ tell application "System Events" to tell process "Xcode"
                 repeat while not (exists static text "Password:")
                     delay 0.1
                 end repeat
-                keystroke (system attribute "ACCOUNT_PASS")
+                set value of text field 1 to (system attribute "ACCOUNT_PASS")
                 repeat while not (enabled of button "Next")
                     delay 0.1
                 end repeat
