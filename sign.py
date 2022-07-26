@@ -1040,18 +1040,18 @@ class Signer:
                     # sort by decreasing length to make sure that there are no overlaps
                     patches = dict(sorted(self.mappings.items(), key=lambda x: len(x[0]), reverse=True))
 
-                    print("Applying patches...")
-                    targets = [
-                        x for x in [component, component.joinpath(component.stem)] if x.exists() and x.is_file()
-                    ]
-                    if data is not None:
-                        targets.append(data.info_plist)
-                    for target in targets:
-                        for old, new in patches.items():
-                            print("Patching", target)
-                            binary_replace(f"s/{re.escape(old)}/{re.escape(new)}/g", target)
-
-                print("Signing")
+                    if len(patches) < 1:
+                        print("Nothing to patch")
+                    else:
+                        targets = [
+                            x for x in [component, component.joinpath(component.stem)] if x.exists() and x.is_file()
+                        ]
+                        if data is not None:
+                            targets.append(data.info_plist)
+                        for target in targets:
+                            print(f"Patching {len(patches)} patterns in {target}")
+                            for old, new in patches.items():
+                                binary_replace(f"s/{re.escape(old)}/{re.escape(new)}/g", target)
 
                 if data is not None:
                     jobs[component] = self.__sign_primary(component, tmpdir, data)
