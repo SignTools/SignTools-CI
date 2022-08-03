@@ -3,33 +3,6 @@ const tus = require("tus-js-client");
 const { exit } = require("process");
 const path = require("path");
 
-// modified from: https://github.com/tus/tus-js-client/blob/master/lib/node/sources/FileSource.js
-class FileSource {
-  constructor(stream) {
-    this._stream = stream;
-    this._path = stream.path.toString();
-    this.size = stream.size ? stream.size : fs.statSync(this._path).size;
-    this.offset = stream.start ? stream.start : 0;
-  }
-  slice(start, end) {
-    const stream = fs.createReadStream(this._path, {
-      start: start + this.offset,
-      end: end - 1 + this.offset,
-    });
-    stream.size = end - start;
-    return Promise.resolve({ value: stream });
-  }
-  close() {
-    this._stream.destroy();
-  }
-}
-
-class FileReader {
-  openFile(input, chunkSize) {
-    return Promise.resolve(new FileSource(input));
-  }
-}
-
 var args = process.argv.slice(2);
 if (args.length != 3) {
   console.log("Usage: upload.js FILE_TO_UPLOAD ENDPOINT KEY");
@@ -58,7 +31,6 @@ var options = {
     Authorization: "Bearer " + key,
   },
   parallelUploads: 6,
-  fileReader: new FileReader(),
   onError(err) {
     console.log(err.message);
     exit(2);
