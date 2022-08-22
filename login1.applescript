@@ -1,5 +1,5 @@
 repeat while application "Xcode" is not running
-	delay 0.1
+    delay 0.1
 end repeat
 
 tell application "System Events" to tell process "Xcode"
@@ -17,7 +17,7 @@ tell application "System Events" to tell process "Xcode"
         delay 0.1
     end repeat
     tell window "Accounts"
-	    -- row 1 is table header
+        -- row 1 is table header
         -- while there are any existing accounts added, remove them
         repeat while (exists row 2 of table 1 of scroll area 1)
             click button 2

@@ -303,14 +303,14 @@ def get_binary_map(dir: Path):
 
 
 def codesign(identity: str, component: Path, entitlements: Optional[Path] = None):
-    cmd = ["/usr/bin/codesign", "--continue", "-f", "--no-strict", "-s", identity]
+    cmd = ["codesign", "--continue", "-f", "--no-strict", "-s", identity]
     if entitlements:
         cmd.extend(["--entitlements", str(entitlements)])
     return run_process(*cmd, str(component))
 
 
 def codesign_async(identity: str, component: Path, entitlements: Optional[Path] = None):
-    cmd = ["/usr/bin/codesign", "--continue", "-f", "--no-strict", "-s", identity]
+    cmd = ["codesign", "--continue", "-f", "--no-strict", "-s", identity]
     if entitlements:
         cmd.extend(["--entitlements", str(entitlements)])
     return subprocess.Popen([*cmd, str(component)], stdout=PIPE, stderr=PIPE)
@@ -318,7 +318,7 @@ def codesign_async(identity: str, component: Path, entitlements: Optional[Path] 
 
 def codesign_dump_entitlements(component: Path) -> Dict[Any, Any]:
     entitlements_str = decode_clean(
-        run_process("/usr/bin/codesign", "--no-strict", "-d", "--entitlements", ":-", str(component)).stdout
+        run_process("codesign", "--no-strict", "-d", "--entitlements", ":-", str(component)).stdout
     )
     return plist_loads(entitlements_str)
 
