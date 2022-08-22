@@ -90,10 +90,11 @@ def read_file(file_path: StrPath):
 
 
 def extract_zip(archive: Path, dest_dir: Path):
-    if shutil.which("7z"):
-        return run_process("7z", "x", str(archive), "-o" + str(dest_dir))
-    else:
-        return run_process("unzip", "-o", str(archive), "-d", str(dest_dir))
+    return run_process("unzip", "-o", str(archive), "-d", str(dest_dir))
+
+
+def archive_zip(content_dir: Path, dest_file: Path):
+    return run_process("zip", "-r", str(dest_file.resolve()), ".", cwd=str(content_dir))
 
 
 def print_object(obj: Any):
@@ -260,10 +261,6 @@ def extract_deb(app_bin_name: str, app_bundle_id: str, archive: Path, dest_dir: 
                             if not ok:
                                 continue
                     move_merge_replace(file, dest_dir)
-
-
-def archive_zip(content_dir: Path, dest_file: Path):
-    return run_process("zip", "-r", str(dest_file.resolve()), ".", cwd=str(content_dir))
 
 
 def move_merge_replace(src: Path, dest_dir: Path):
