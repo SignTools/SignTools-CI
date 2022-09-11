@@ -897,6 +897,7 @@ class Signer:
                         "com.apple.developer.siri",
                         "com.apple.developer.ubiquity-container-identifiers",
                         "com.apple.developer.ubiquity-kvstore-identifier",
+                        "com.apple.developer.nfc.readersession.formats"
                     ]
                 )
             entitlements = copy.deepcopy(old_entitlements)
