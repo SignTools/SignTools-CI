@@ -890,14 +890,15 @@ class Signer:
                         "com.apple.developer.icloud-container-identifiers",
                         "com.apple.developer.icloud-services",
                         "com.apple.developer.kernel.extended-virtual-addressing",
+                        "com.apple.developer.kernel.increased-memory-limit",
                         "com.apple.developer.networking.multipath",
                         "com.apple.developer.networking.networkextension",
                         "com.apple.developer.networking.vpn.api",
                         "com.apple.developer.networking.wifi-info",
+                        "com.apple.developer.nfc.readersession.formats",
                         "com.apple.developer.siri",
                         "com.apple.developer.ubiquity-container-identifiers",
                         "com.apple.developer.ubiquity-kvstore-identifier",
-                        "com.apple.developer.nfc.readersession.formats"
                     ]
                 )
             entitlements = copy.deepcopy(old_entitlements)
