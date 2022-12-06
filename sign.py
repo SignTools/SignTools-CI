@@ -26,6 +26,12 @@ old_keychain: Optional[str] = None
 StrPath = Union[str, Path]
 
 
+def safe_glob(input: Path, pattern: str):
+    for f in input.glob(pattern):
+        if not (f.name.startswith("._") or f.name == ".DS_Store" or f.name == ".AppleDouble"):
+            yield f
+
+
 def decode_clean(b: bytes):
     return "" if not b else b.decode("utf-8").strip()
 
@@ -69,7 +75,7 @@ def kill_xcode():
 
 def get_prov_profiles():
     prov_profiles_path = Path.home().joinpath("Library/MobileDevice/Provisioning Profiles")
-    result = list(prov_profiles_path.glob("*.mobileprovision"))
+    result = list(safe_glob(prov_profiles_path, "*.mobileprovision"))
     return result
 
 
@@ -218,9 +224,9 @@ def extract_deb(app_bin_name: str, app_bundle_id: str, archive: Path, dest_dir: 
         run_process("ar", "x", str(archive.resolve()), cwd=str(temp_dir))
         with tempfile.TemporaryDirectory() as temp_dir2_str:
             temp_dir2 = Path(temp_dir2_str)
-            extract_tar(next(temp_dir.glob("data.tar*")), temp_dir2)
+            extract_tar(next(safe_glob(temp_dir, "data.tar*")), temp_dir2)
 
-            for file in temp_dir2.glob("**/*"):
+            for file in safe_glob(temp_dir2, "**/*"):
                 if file.is_symlink():
                     target = file.resolve()
                     if target.is_absolute():
@@ -237,16 +243,16 @@ def extract_deb(app_bin_name: str, app_bundle_id: str, archive: Path, dest_dir: 
                 "Library/Frameworks/*.framework",
                 "usr/lib/*.framework",
             ]:
-                for file in temp_dir2.glob(glob):
+                for file in safe_glob(temp_dir2, glob):
                     # skip empty directories
-                    if file.is_dir() and next(file.glob("*"), None) is None:
+                    if file.is_dir() and next(safe_glob(file, "*"), None) is None:
                         continue
                     move_merge_replace(file, dest_dir)
             for glob in [
                 "Library/MobileSubstrate/DynamicLibraries/*.dylib",
                 "usr/lib/*.dylib",
             ]:
-                for file in temp_dir2.glob(glob):
+                for file in safe_glob(temp_dir2, glob):
                     if not file.is_file():
                         continue
                     file_plist = file.parent.joinpath(file.stem + ".plist")
@@ -299,7 +305,7 @@ def insert_dylib(binary: Path, path: Path):
 
 
 def get_binary_map(dir: Path):
-    return {file.name: file for file in dir.glob("**/*") if file_is_type(file, "Mach-O")}
+    return {file.name: file for file in safe_glob(dir, "**/*") if file_is_type(file, "Mach-O")}
 
 
 def codesign(identity: str, component: Path, entitlements: Optional[Path] = None):
@@ -424,13 +430,13 @@ def popen_check(pipe: Popen[bytes]):
 
 
 def inject_tweaks(ipa_dir: Path, tweaks_dir: Path):
-    app_dir = next(ipa_dir.glob("Payload/*.app"))
+    app_dir = next(safe_glob(ipa_dir, "Payload/*.app"))
     info = plist_load(app_dir.joinpath("Info.plist"))
     app_bundle_id = info["CFBundleIdentifier"]
     app_bin = app_dir.joinpath(app_dir.stem)
     with tempfile.TemporaryDirectory() as temp_dir_str:
         temp_dir = Path(temp_dir_str)
-        for tweak in tweaks_dir.glob("*"):
+        for tweak in safe_glob(tweaks_dir, "*"):
             print("Processing", tweak.name)
             if tweak.suffix == ".zip":
                 extract_zip(tweak, temp_dir)
@@ -445,7 +451,7 @@ def inject_tweaks(ipa_dir: Path, tweaks_dir: Path):
         move_map = {"Frameworks": ["*.framework", "*.dylib"], "PlugIns": ["*.appex"]}
         for dest_dir, globs in move_map.items():
             for glob in globs:
-                for file in temp_dir.glob(glob):
+                for file in safe_glob(temp_dir, glob):
                     move_merge_replace(file, temp_dir.joinpath(dest_dir))
 
         # NOTE: https://iphonedev.wiki/index.php/Cydia_Substrate
@@ -484,7 +490,7 @@ def inject_tweaks(ipa_dir: Path, tweaks_dir: Path):
                     if link_path.name not in lib_names:
                         continue
                     print("Detected", lib_dir.name)
-                    for lib_src in lib_dir.glob("*"):
+                    for lib_src in safe_glob(lib_dir, "*"):
                         lib_dest = temp_dir.joinpath("Frameworks").joinpath(lib_src.name)
                         if not lib_dest.exists():
                             print(f"Installing {lib_src.name} to {lib_dest}")
@@ -504,7 +510,7 @@ def inject_tweaks(ipa_dir: Path, tweaks_dir: Path):
                     print("Re-linking", binary_path, link_path, link_fixed)
                     install_name_change(binary_path, link_path, link_fixed)
 
-        for file in temp_dir.glob("*"):
+        for file in safe_glob(temp_dir, "*"):
             move_merge_replace(file, app_dir)
 
 
@@ -622,7 +628,7 @@ class Signer:
 
     def __init__(self, opts: SignOpts):
         self.opts = opts
-        main_app = next(opts.app_dir.glob("Payload/*.app"))
+        main_app = next(safe_glob(opts.app_dir, "Payload/*.app"))
         main_info_plist = main_app.joinpath("Info.plist")
         main_info: Dict[Any, Any] = plist_load(main_info_plist)
         self.old_main_bundle_id = main_info["CFBundleIdentifier"]
@@ -683,7 +689,7 @@ class Signer:
 
         component_exts = ["*.app", "*.appex", "*.framework", "*.dylib"]
         # make sure components are ordered depth-first, otherwise signing will overlap and become invalid
-        self.components = [item for e in component_exts for item in main_app.glob("**/" + e)][::-1]
+        self.components = [item for e in component_exts for item in safe_glob(main_app, "**/" + e)][::-1]
         self.components.append(main_app)
 
     def __sign_secondary(self, component: Path, workdir: Path):
