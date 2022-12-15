@@ -28,7 +28,7 @@ StrPath = Union[str, Path]
 
 def safe_glob(input: Path, pattern: str):
     for f in input.glob(pattern):
-        if not (f.name.startswith("._") or f.name == ".DS_Store" or f.name == ".AppleDouble"):
+        if not f.name.startswith("._") and f.name not in [".DS_Store", ".AppleDouble", "__MACOSX"]:
             yield f
 
 
