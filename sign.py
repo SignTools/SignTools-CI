@@ -1089,6 +1089,8 @@ def run():
     if common_names["Distribution"] is not None:
         print("Using distribution certificate")
         common_name = common_names["Distribution"]
+        if "-d" in sign_args:
+            raise Exception("Debugging cannot be enabled on distribution certificate, use development.")
     else:
         print("Using development certificate")
         common_name = common_names["Development"]
