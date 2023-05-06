@@ -15,6 +15,7 @@ blocks:
           commands:
             - checkout
             - nvm install 16
+            - sudo xcode-select -s /Applications/Xcode-14.app
             - ./sign.py
       secrets:
         - name: ios-signer
