@@ -15,5 +15,5 @@ jobs:
         uses: actions/checkout@v3
       - name: Sign
         run: |
-          sudo xcode-select -s /Applications/Xcode_14.0.1.app
+          sudo xcode-select -s /Applications/Xcode_14.2.app
           ./sign.py
