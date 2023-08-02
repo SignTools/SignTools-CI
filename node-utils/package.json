@@ -1,6 +1,6 @@
 {
   "dependencies": {
     "easydl": "^1.0.3",
-    "tus-js-client": "^3.1.0"
+    "tus-js-client": "^3.1.1"
   }
 }
