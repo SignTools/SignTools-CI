@@ -956,10 +956,10 @@ class Signer:
                     #
                     RemapDef(
                         ["keychain-access-groups"], self.opts.team_id + ".", True, True
-                    ),  # APP_ID_PREFIX.com.test.app
+                    ),  # JF8WQ0B38Z.com.test.app
                     RemapDef(
-                        ["com.apple.developer.ubiquity-kvstore-identifier"], self.opts.team_id + ".", True, False
-                    ),  # APP_ID_PREFIX.com.test.app
+                        ["com.apple.developer.ubiquity-kvstore-identifier"], self.opts.team_id + ".", False, False
+                    ),  # JF8WQ0B38Z.com.test.app
                 ):
                     for entitlement in remap_def.entitlements:
                         remap_ids: List[str] | str = entitlements.get(entitlement, [])
