@@ -6,9 +6,9 @@ import re
 import sys
 import time
 import traceback
-from subprocess import CompletedProcess, PIPE, Popen, TimeoutExpired
+from subprocess import PIPE, Popen
 import subprocess
-from typing import Callable, Dict, List, NamedTuple, Set, Tuple, IO, Any, Optional, Mapping, Union
+from typing import Dict, List, NamedTuple, Set, Tuple, IO, Any, Optional, Mapping, Union
 from pathlib import Path
 import plistlib
 import shutil
@@ -68,12 +68,6 @@ def rand_str(len: int, seed: Any = None):
 
 def kill_xcode():
     return run_process("killall", "Xcode", check=False)
-
-
-def get_prov_profiles():
-    prov_profiles_path = Path.home().joinpath("Library/MobileDevice/Provisioning Profiles")
-    result = list(safe_glob(prov_profiles_path, "*.mobileprovision"))
-    return result
 
 
 def open_xcode(project: Optional[Path] = None):
@@ -202,15 +196,6 @@ def security_import(cert: Path, cert_pass: str, keychain: str) -> List[str]:
     return [line.strip('"') for line in re.findall('".*"', identity)]
 
 
-def osascript(
-    script: Path,
-    env: Optional[Mapping[str, str]] = None,
-    check: bool = True,
-    timeout: Optional[float] = None,
-):
-    return run_process("osascript", str(script), env=env, check=check, timeout=timeout)
-
-
 def extract_tar(archive: Path, dest_dir: Path):
     return run_process("tar", "-x", "-f", str(archive), "-C" + str(dest_dir))
 
@@ -305,18 +290,211 @@ def get_binary_map(dir: Path):
     return {file.name: file for file in safe_glob(dir, "**/*") if file_is_type(file, "Mach-O")}
 
 
-def codesign(identity: str, component: Path, entitlements: Optional[Path] = None):
-    cmd = ["codesign", "--continue", "-f", "--no-strict", "-s", identity]
-    if entitlements:
-        cmd.extend(["--entitlements", str(entitlements)])
-    return run_process(*cmd, str(component))
-
-
 def codesign_async(identity: str, component: Path, entitlements: Optional[Path] = None):
     cmd = ["codesign", "--continue", "-f", "--no-strict", "-s", identity]
     if entitlements:
         cmd.extend(["--entitlements", str(entitlements)])
     return subprocess.Popen([*cmd, str(component)], stdout=PIPE, stderr=PIPE)
+
+
+def fastlane_auth(account_name: str, account_pass: str):
+    my_env = os.environ.copy()
+    my_env["FASTLANE_USER"] = account_name
+    my_env["FASTLANE_PASSWORD"] = account_pass
+
+    auth_pipe = subprocess.Popen(
+        # enable copy to clipboard so we're not interactively prompted
+        ["fastlane", "spaceauth", "--copy_to_clipboard"],
+        stdin=PIPE,
+        stdout=PIPE,
+        stderr=PIPE,
+        env=my_env,
+    )
+
+    start_time = time.time()
+    while True:
+        if time.time() - start_time > 60:
+            raise Exception("Operation timed out")
+        else:
+            result = auth_pipe.poll()
+            if result == 0:
+                print("Logged in!")
+                break
+            elif result is not None:
+                raise Exception(f"Error logging in, got result: {result}")
+
+            account_2fa_file = Path("account_2fa.txt")
+            result = curl_with_auth(
+                f"{secret_url}/jobs/{job_id}/2fa",
+                output=account_2fa_file,
+                check=False,
+            )
+            if result.returncode == 0:
+                account_2fa = read_file(account_2fa_file)
+                auth_pipe.communicate((account_2fa + "\n").encode())
+        time.sleep(1)
+
+
+def fastlane_register_app_extras(
+    my_env: Dict[Any, Any],
+    bundle_id: str,
+    extra_type: str,
+    extra_prefix: str,
+    matchable_entitlements: List[str],
+    entitlements: Dict[Any, Any],
+):
+    matched_ids: Set[str] = set()
+    for k, v in entitlements.items():
+        if k in matchable_entitlements:
+            if type(v) is list:
+                matched_ids.update(v)
+            elif type(v) is str:
+                matched_ids.add(v)
+            else:
+                raise Exception(f"Unknown value type for {v}: {type(v)}")
+
+    # ensure all ids are prefixed correctly or registration will fail
+    # some matchable entitlements are incorrectly prefixed with team id
+    matched_ids = set(
+        id if id.startswith(extra_prefix) else extra_prefix + id[id.index(".") + 1 :] for id in matched_ids
+    )
+
+    for id in matched_ids:
+        run_process(
+            "fastlane",
+            "produce",
+            extra_type,
+            "--skip_itc",
+            "--container_identifier",
+            id,
+            "--container_name",
+            id,
+            env=my_env,
+        )
+
+    run_process(
+        "fastlane",
+        "produce",
+        f"associate_{extra_type}",
+        "--skip_itc",
+        "--app_identifier",
+        bundle_id,
+        *matched_ids,
+        env=my_env,
+    )
+
+
+def fastlane_register_app(account_name: str, account_pass: str, bundle_id: str, entitlements: Dict[Any, Any]):
+    my_env = os.environ.copy()
+    my_env["FASTLANE_USER"] = account_name
+    my_env["FASTLANE_PASSWORD"] = account_pass
+
+    # no-op if already exists
+    run_process(
+        "fastlane",
+        "produce",
+        "create",
+        "--skip_itc",
+        "--app_identifier",
+        bundle_id,
+        "--app-name",
+        "ST " + bundle_id.replace(".", " "),
+        env=my_env,
+    )
+
+    # clear any previous services
+    run_process(
+        "fastlane",
+        "produce",
+        "disable_services",
+        "--skip_itc",
+        "--app_identifier",
+        bundle_id,
+        "--app-group",
+        "--push-notification",
+        "--icloud",
+        env=my_env,
+    )
+
+    icloud_entitlements = [
+        "com.apple.developer.icloud-container-development-container-identifiers",
+        "com.apple.developer.icloud-container-identifiers",
+        "com.apple.developer.ubiquity-container-identifiers",
+        "com.apple.developer.ubiquity-kvstore-identifier",
+    ]
+
+    group_entitlements = ["com.apple.security.application-groups"]
+
+    entitlement_map: Dict[str, Tuple[str, ...]] = {
+        "aps-environment": tuple(["--push-notification"]),  # iOS
+        "com.apple.developer.aps-environment": tuple(["--push-notification"]),  # macOS
+        "com.apple.developer.healthkit": tuple(["--health-kit"]),
+        "com.apple.developer.homekit": tuple(["--home-kit"]),
+        "com.apple.external-accessory.wireless-configuration": tuple(["--wireless-accessory"]),
+        "inter-app-audio": tuple(["--inter-app-audio"]),
+        "com.apple.developer.kernel.extended-virtual-addressing": tuple(["--extended-virtual-address-space"]),
+        "com.apple.developer.networking.multipath": tuple(["--multipath"]),
+        "com.apple.developer.networking.networkextension": tuple(["--network-extension"]),
+        "com.apple.developer.networking.vpn.api": tuple(["--personal-vpn"]),
+        "com.apple.developer.networking.wifi-info": tuple(["--access-wifi"]),
+        "com.apple.developer.nfc.readersession.formats": tuple(["--nfc-tag-reading"]),
+        "com.apple.developer.siri": tuple(["--siri-kit"]),
+        "com.apple.developer.associated-domains": tuple(["--associated-domains"]),
+    }
+    for k in icloud_entitlements:
+        entitlement_map[k] = tuple(["--icloud", "xcode6_compatible"])
+    for k in group_entitlements:
+        entitlement_map[k] = tuple(["--app-group"])
+
+    service_flags = set(entitlement_map[f] for f in entitlements.keys() if f in entitlement_map)
+    service_flags = [item for sublist in service_flags for item in sublist]
+
+    print("Enabling services:", service_flags)
+
+    run_process(
+        "fastlane",
+        "produce",
+        "enable_services",
+        "--skip_itc",
+        "--app_identifier",
+        bundle_id,
+        *service_flags,
+        env=my_env,
+    )
+
+    fastlane_register_app_extras(my_env, bundle_id, "cloud_container", "iCloud.", icloud_entitlements, entitlements)
+    fastlane_register_app_extras(my_env, bundle_id, "group", "group.", group_entitlements, entitlements)
+
+
+def fastlane_get_prov_profile(
+    account_name: str, account_pass: str, bundle_id: str, prov_type: str, platform: str, out_file: Path
+):
+    my_env = os.environ.copy()
+    my_env["FASTLANE_USER"] = account_name
+    my_env["FASTLANE_PASSWORD"] = account_pass
+
+    with tempfile.TemporaryDirectory() as tmpdir_str:
+        run_process(
+            "fastlane",
+            "sigh",
+            "renew",
+            "--app_identifier",
+            bundle_id,
+            "--provisioning_name",
+            f"ST {bundle_id} {prov_type}",
+            "--force",
+            "--skip_install",
+            "--include_mac_in_profiles",
+            "--platform",
+            platform,
+            "--" + prov_type,
+            "--output_path",
+            tmpdir_str,
+            "--filename",
+            "prov.mobileprovision",
+            env=my_env,
+        )
+        shutil.copy2(Path(tmpdir_str).joinpath("prov.mobileprovision"), out_file)
 
 
 def codesign_dump_entitlements(component: Path) -> Dict[Any, Any]:
@@ -334,77 +512,6 @@ def binary_replace(pattern: str, f: Path):
 
 def security_dump_prov(f: Path):
     return decode_clean(run_process("security", "cms", "-D", "-i", str(f)).stdout)
-
-
-def exec_retry(name: str, func: Callable[[], CompletedProcess[bytes]]):
-    start_time = time.time()
-    last_error: Optional[Exception] = None
-    retry_count = 0
-    while retry_count < 3 and time.time() - start_time < 120:
-        try:
-            return func()
-        except Exception as e:
-            last_error = e
-            if not isinstance(e.__cause__, TimeoutExpired):
-                retry_count += 1
-            print(f"{name} errored, retrying")
-    if last_error is None:
-        raise Exception(f"{name} had an unknown error")
-    raise last_error
-
-
-def xcode_archive(project_dir: Path, scheme_name: str, archive: Path):
-    # Xcode needs to be open to "cure" hanging issues
-    open_xcode(project_dir)
-    try:
-        return exec_retry("xcode_archive", lambda: _xcode_archive(project_dir, scheme_name, archive))
-    finally:
-        kill_xcode()
-
-
-def _xcode_archive(project_dir: Path, scheme_name: str, archive: Path):
-    return run_process(
-        "xcodebuild",
-        "-allowProvisioningUpdates",
-        "-project",
-        str(project_dir.resolve()),
-        "-scheme",
-        scheme_name,
-        "clean",
-        "archive",
-        "-archivePath",
-        str(archive.resolve()),
-        timeout=20,
-    )
-
-
-def xcode_export(project_dir: Path, archive: Path, export_dir: Path):
-    # Xcode needs to be open to "cure" hanging issues
-    open_xcode(project_dir)
-    try:
-        return exec_retry("xcode_export", lambda: _xcode_export(project_dir, archive, export_dir))
-    finally:
-        kill_xcode()
-
-
-def _xcode_export(project_dir: Path, archive: Path, export_dir: Path):
-    options_plist = export_dir.joinpath("options.plist")
-    with options_plist.open("wb") as f:
-        plist_dump({"method": "ad-hoc", "iCloudContainerEnvironment": "Production"}, f)
-    return run_process(
-        "xcodebuild",
-        "-allowProvisioningUpdates",
-        "-project",
-        str(project_dir.resolve()),
-        "-exportArchive",
-        "-archivePath",
-        str(archive.resolve()),
-        "-exportPath",
-        str(export_dir.resolve()),
-        "-exportOptionsPlist",
-        str(options_plist.resolve()),
-        timeout=20,
-    )
 
 
 def dump_prov(prov_file: Path) -> Dict[Any, Any]:
@@ -427,10 +534,22 @@ def popen_check(pipe: Popen[bytes]):
 
 
 def inject_tweaks(ipa_dir: Path, tweaks_dir: Path):
-    app_dir = next(safe_glob(ipa_dir, "Payload/*.app"))
-    info = plist_load(app_dir.joinpath("Info.plist"))
+    main_app = get_main_app_path(ipa_dir)
+    main_info_plist = get_info_plist_path(main_app)
+    info = plist_load(main_info_plist)
     app_bundle_id = info["CFBundleIdentifier"]
-    app_bin = app_dir.joinpath(app_dir.stem)
+    app_bundle_exe = info["CFBundleExecutable"]
+    is_mac_app = main_info_plist.parent.name == "Contents"
+
+    if is_mac_app:
+        base_dir = main_info_plist.parent
+        app_bin = base_dir.joinpath("MacOS", app_bundle_exe)
+        base_load_path = Path("@executable_path").joinpath("..")
+    else:
+        base_dir = main_app
+        app_bin = base_dir.joinpath(app_bundle_exe)
+        base_load_path = Path("@executable_path")
+
     with tempfile.TemporaryDirectory() as temp_dir_str:
         temp_dir = Path(temp_dir_str)
         for tweak in safe_glob(tweaks_dir, "*"):
@@ -475,7 +594,7 @@ def inject_tweaks(ipa_dir: Path, tweaks_dir: Path):
                 and binary_rel.parent.suffix == ".framework"
                 and binary_rel.parent.parent.name == "Frameworks"
             ):
-                binary_fixed = Path("@executable_path").joinpath(binary_rel)
+                binary_fixed = base_load_path.joinpath(binary_rel)
                 print("Injecting", binary_path, binary_fixed)
                 insert_dylib(app_bin, binary_fixed)
 
@@ -503,77 +622,20 @@ def inject_tweaks(ipa_dir: Path, tweaks_dir: Path):
                 link_path = Path(link)
                 link_name = aliases[link_path.name] if link_path.name in aliases else link_path.name
                 if link_name in binary_map:
-                    link_fixed = Path("@executable_path").joinpath(binary_map[link_name].relative_to(temp_dir))
+                    link_fixed = base_load_path.joinpath(binary_map[link_name].relative_to(temp_dir))
                     print("Re-linking", binary_path, link_path, link_fixed)
                     install_name_change(binary_path, link_path, link_fixed)
 
         for file in safe_glob(temp_dir, "*"):
-            move_merge_replace(file, app_dir)
-
-
-def setup_account(account_name_file: Path, account_pass_file: Path):
-    global old_keychain
-    print("Using developer account")
-    account_name = read_file(account_name_file)
-    account_pass = read_file(account_pass_file)
-    kill_xcode()
-    for prov_profile in get_prov_profiles():
-        os.remove(prov_profile)
-    old_keychain = security_set_default_keychain(keychain_name)
-
-    print("Logging in (1/2)...")
-    open_xcode()
-    osascript(
-        Path("login1.applescript"),
-        {
-            **os.environ,
-            "ACCOUNT_NAME": account_name,
-            "ACCOUNT_PASS": account_pass,
-        },
-        timeout=30,
-    )
-
-    print(
-        "Logging in (2/2)...",
-        "If you receive a two-factor authentication (2FA) code, please submit it to the web service.",
-        sep="\n",
-    )
-    code_entered = False
-    start_time = time.time()
-    while True:
-        if time.time() - start_time > 60:
-            raise Exception("Operation timed out")
-        elif osascript(Path("login3.applescript"), check=False, timeout=10).returncode == 0:
-            print("Logged in!")
-            break
-        elif not code_entered:
-            account_2fa_file = Path("account_2fa.txt")
-            result = curl_with_auth(
-                f"{secret_url}/jobs/{job_id}/2fa",
-                output=account_2fa_file,
-                check=False,
-            )
-            if result.returncode != 0:
-                continue
-            account_2fa = read_file(account_2fa_file)
-            osascript(
-                Path("login2.applescript"),
-                {**os.environ, "ACCOUNT_2FA": account_2fa},
-                timeout=10,
-            )
-            code_entered = True
-        time.sleep(1)
-
-    teams = decode_clean(osascript(Path("login4.applescript"), timeout=10).stderr).splitlines()
-    kill_xcode()
-    return teams
+            move_merge_replace(file, base_dir)
 
 
 class SignOpts(NamedTuple):
     app_dir: Path
     common_name: str
     team_id: str
-    is_free_account: bool
+    account_name: str
+    account_pass: str
     prov_file: Optional[Path]
     bundle_id: Optional[str]
     bundle_name: Optional[str]
@@ -596,9 +658,16 @@ class RemapDef(NamedTuple):
 class ComponentData(NamedTuple):
     old_bundle_id: str
     bundle_id: str
-    entitlements_plist: Path
+    entitlements: Dict[Any, Any]
     info_plist: Path
-    embedded_prov: Path
+
+
+def get_info_plist_path(app_dir: Path):
+    return min(list(safe_glob(app_dir, "**/Info.plist")), key=lambda p: len(str(p)))
+
+
+def get_main_app_path(app_dir: Path):
+    return min(list(safe_glob(app_dir, "**/*.app")), key=lambda p: len(str(p)))
 
 
 class Signer:
@@ -609,6 +678,7 @@ class Signer:
     removed_entitlements: Set[str]
     is_distribution: bool
     components: List[Path]
+    is_mac_app: bool
 
     def gen_id(self, input_id: str):
         """
@@ -623,13 +693,25 @@ class Signer:
         result = ".".join(new_parts)
         return result
 
+    def __get_application_identifier_key(self):
+        return "com.apple.application-identifier" if self.is_mac_app else "application-identifier"
+
+    def __get_aps_environment_key(self):
+        return "com.apple.developer.aps-environment" if self.is_mac_app else "aps-environment"
+
     def __init__(self, opts: SignOpts):
         self.opts = opts
-        main_app = next(safe_glob(opts.app_dir, "Payload/*.app"))
-        main_info_plist = main_app.joinpath("Info.plist")
+        main_app = get_main_app_path(opts.app_dir)
+        main_info_plist = get_info_plist_path(main_app)
         main_info: Dict[Any, Any] = plist_load(main_info_plist)
         self.old_main_bundle_id = main_info["CFBundleIdentifier"]
         self.is_distribution = "Distribution" in opts.common_name
+        self.is_mac_app = main_info_plist.parent.name == "Contents"
+
+        if self.is_distribution and self.is_mac_app:
+            raise Exception(
+                "Cannot use distribution certificate for macOS as the platform does not support adhoc provisioning profiles."
+            )
 
         self.mappings: Dict[str, str] = {}
         self.removed_entitlements = set()
@@ -640,7 +722,7 @@ class Signer:
                 self.main_bundle_id = self.old_main_bundle_id
             elif opts.bundle_id == "":
                 print("Using provisioning profile's application id")
-                prov_app_id = dump_prov_entitlements(opts.prov_file)["application-identifier"]
+                prov_app_id = dump_prov_entitlements(opts.prov_file)[self.__get_application_identifier_key()]
                 self.main_bundle_id = prov_app_id[prov_app_id.find(".") + 1 :]
                 if self.main_bundle_id == "*":
                     print("Provisioning profile is wildcard, using original bundle id")
@@ -666,8 +748,12 @@ class Signer:
             main_info["CFBundleDisplayName"] = opts.bundle_name
 
         if self.opts.patch_all_devices:
-            # https://developer.apple.com/documentation/bundleresources/information_property_list/minimumosversion
-            main_info["MinimumOSVersion"] = "3.0"
+            if self.is_mac_app:
+                # https://developer.apple.com/documentation/bundleresources/information_property_list/lsminimumsystemversion
+                main_info["LSMinimumSystemVersion"] = "10.0"
+            else:
+                # https://developer.apple.com/documentation/bundleresources/information_property_list/minimumosversion
+                main_info["MinimumOSVersion"] = "3.0"
 
         with open("bundle_id.txt", "w") as f:
             if opts.force_original_id:
@@ -684,66 +770,18 @@ class Signer:
                 print(f"Removing {watch_name} directory")
                 shutil.rmtree(watch_dir)
 
-        component_exts = ["*.app", "*.appex", "*.framework", "*.dylib"]
+        component_exts = ["*.app", "*.appex", "*.framework", "*.dylib", "PlugIns/*.bundle"]
         # make sure components are ordered depth-first, otherwise signing will overlap and become invalid
         self.components = [item for e in component_exts for item in safe_glob(main_app, "**/" + e)][::-1]
         self.components.append(main_app)
 
-    def __sign_secondary(self, component: Path, workdir: Path):
+    def __sign_secondary(self, component: Path, tmpdir: Path):
         # entitlements of frameworks, etc. don't matter, so leave them (potentially) invalid
         print("Signing with original entitlements")
         return codesign_async(self.opts.common_name, component)
 
-    def __sign_primary(self, component: Path, workdir: Path, data: ComponentData):
-        if self.opts.prov_file is not None:
-            pass
-        else:
-            with tempfile.TemporaryDirectory() as tmpdir_str:
-                tmpdir = Path(tmpdir_str)
-                simple_app_dir = tmpdir.joinpath("SimpleApp")
-                shutil.copytree("SimpleApp", simple_app_dir)
-                xcode_entitlements_plist = simple_app_dir.joinpath("SimpleApp/SimpleApp.entitlements")
-                shutil.copy2(data.entitlements_plist, xcode_entitlements_plist)
-
-                simple_app_proj = simple_app_dir.joinpath("SimpleApp.xcodeproj")
-                simple_app_pbxproj = simple_app_proj.joinpath("project.pbxproj")
-                binary_replace(f"s/BUNDLE_ID_HERE_V9KP12/{data.bundle_id}/g", simple_app_pbxproj)
-                binary_replace(f"s/DEV_TEAM_HERE_J8HK5C/{self.opts.team_id}/g", simple_app_pbxproj)
-
-                for prov_profile in get_prov_profiles():
-                    os.remove(prov_profile)
-
-                print("Obtaining provisioning profile...")
-                print("Archiving app...")
-                archive = simple_app_dir.joinpath("archive.xcarchive")
-                xcode_archive(simple_app_proj, "SimpleApp", archive)
-                if self.is_distribution:
-                    print("Exporting app...")
-                    for prov_profile in get_prov_profiles():
-                        os.remove(prov_profile)
-                    xcode_export(simple_app_proj, archive, simple_app_dir)
-                    exported_ipa = simple_app_dir.joinpath("SimpleApp.ipa")
-                    extract_zip(exported_ipa, simple_app_dir)
-                    output_bin = simple_app_dir.joinpath("Payload/SimpleApp.app")
-                else:
-                    output_bin = archive.joinpath("Products/Applications/SimpleApp.app")
-
-                prov_profiles = list(get_prov_profiles())
-                # sometimes Xcode will create multiple prov profiles:
-                # - iOS Team Provisioning Profile: *
-                # - iOS Team Provisioning Profile: com.test.app
-                # - iOS Team Ad Hoc Provisioning Profile: com.test.app
-                # by taking the longest named one, we are taking the one which supports the most entitlements
-                prov_profiles.sort(key=lambda p: len(dump_prov(p)["Name"]), reverse=True)
-                prov_profile = prov_profiles[0]
-                shutil.copy2(prov_profile, data.embedded_prov)
-                for prov_profile in prov_profiles:
-                    os.remove(prov_profile)
-                with data.entitlements_plist.open("wb") as f:
-                    plist_dump(codesign_dump_entitlements(output_bin), f)
-
+    def __sign_primary(self, component: Path, tmpdir: Path, data: ComponentData):
         info = plist_load(data.info_plist)
-        entitlements = plist_load(data.entitlements_plist)
 
         if self.opts.force_original_id:
             print("Keeping original CFBundleIdentifier")
@@ -753,51 +791,73 @@ class Signer:
             info["CFBundleIdentifier"] = data.bundle_id
 
         if self.opts.patch_debug:
-            entitlements["get-task-allow"] = True
+            data.entitlements["get-task-allow"] = True
             print("Enabled app debugging")
         else:
-            entitlements.pop("get-task-allow", False)
+            data.entitlements.pop("get-task-allow", False)
             print("Disabled app debugging")
 
-        if self.opts.patch_all_devices:
-            print("Force enabling support for all devices")
-            info.pop("UISupportedDevices", False)
-            # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/iPhoneOSKeys.html
-            info["UIDeviceFamily"] = [1, 2, 3, 4]  # iOS, iPadOS, tvOS, watchOS
+        if not self.is_mac_app:
+            if self.opts.patch_all_devices:
+                print("Force enabling support for all devices")
+                info.pop("UISupportedDevices", False)
+                # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/iPhoneOSKeys.html
+                info["UIDeviceFamily"] = [1, 2, 3, 4]  # iOS, iPadOS, tvOS, watchOS
 
-        if self.opts.patch_mac:
-            info.pop("UIRequiresFullScreen", False)
-            for device in ["ipad", "iphone", "ipod"]:
-                info.pop("UISupportedInterfaceOrientations~" + device, False)
-            info["UISupportedInterfaceOrientations"] = [
-                "UIInterfaceOrientationPortrait",
-                "UIInterfaceOrientationPortraitUpsideDown",
-                "UIInterfaceOrientationLandscapeLeft",
-                "UIInterfaceOrientationLandscapeRight",
-            ]
+            if self.opts.patch_mac:
+                info.pop("UIRequiresFullScreen", False)
+                for device in ["ipad", "iphone", "ipod"]:
+                    info.pop("UISupportedInterfaceOrientations~" + device, False)
+                info["UISupportedInterfaceOrientations"] = [
+                    "UIInterfaceOrientationPortrait",
+                    "UIInterfaceOrientationPortraitUpsideDown",
+                    "UIInterfaceOrientationLandscapeLeft",
+                    "UIInterfaceOrientationLandscapeRight",
+                ]
 
-        if self.opts.patch_file_sharing:
-            print("Force enabling file sharing")
-            info["UIFileSharingEnabled"] = True
-            info["UISupportsDocumentBrowser"] = True
+            if self.opts.patch_file_sharing:
+                print("Force enabling file sharing")
+                info["UIFileSharingEnabled"] = True
+                info["UISupportsDocumentBrowser"] = True
 
         with data.info_plist.open("wb") as f:
             plist_dump(info, f)
-        with data.entitlements_plist.open("wb") as f:
-            plist_dump(entitlements, f)
 
         print("Signing with entitlements:")
-        print_object(entitlements)
-        return codesign_async(self.opts.common_name, component, data.entitlements_plist)
+        print_object(data.entitlements)
+
+        # iOS   : MyApp.app/embedded.mobileprovision
+        # macOS : MyApp.app/Contents/embedded.provisionprofile
+        embedded_prov = data.info_plist.parent.joinpath(
+            "embedded.provisionprofile" if self.is_mac_app else "embedded.mobileprovision"
+        )
+        if self.opts.prov_file is not None:
+            shutil.copy2(self.opts.prov_file, embedded_prov)
+        else:
+            print("Registering component with Apple...")
+            fastlane_register_app(self.opts.account_name, self.opts.account_pass, data.bundle_id, data.entitlements)
+
+            print("Generating provisioning profile...")
+            prov_type = "adhoc" if self.is_distribution else "development"
+            platform = "macos" if self.is_mac_app else "ios"
+            fastlane_get_prov_profile(
+                self.opts.account_name, self.opts.account_pass, data.bundle_id, prov_type, platform, embedded_prov
+            )
+
+        entitlements_plist = Path(tmpdir).joinpath("entitlements.plist")
+        with open(entitlements_plist, "wb") as f:
+            plist_dump(data.entitlements, f)
+
+        print("Signing component...")
+        return codesign_async(self.opts.common_name, component, entitlements_plist)
 
     def __prepare_primary(
         self,
         component: Path,
         workdir: Path,
     ):
-        info_plist = component.joinpath("Info.plist")
+        info_plist = get_info_plist_path(component)
         info: Dict[Any, Any] = plist_load(info_plist)
-        embedded_prov = component.joinpath("embedded.mobileprovision")
         old_bundle_id = info["CFBundleIdentifier"]
         # create bundle id by suffixing the existing main bundle id with the original suffix
         bundle_id = f"{self.main_bundle_id}{old_bundle_id[len(self.old_main_bundle_id):]}"
@@ -809,9 +869,6 @@ class Signer:
                 )
             else:
                 self.mappings[old_bundle_id] = bundle_id
-
-        with tempfile.NamedTemporaryFile(dir=workdir, suffix=".plist", delete=False) as f:
-            entitlements_plist = Path(f.name)
 
         old_entitlements: Dict[Any, Any]
         try:
@@ -834,7 +891,9 @@ class Signer:
 
         # before 2011 this was known as 'bundle seed id' and could be set freely
         # now it is always equal to team id, but some old apps haven't updated
-        old_app_id_prefix: Optional[str] = old_entitlements.get("application-identifier", "").split(".")[0]
+        old_app_id_prefix: Optional[str] = old_entitlements.get(self.__get_application_identifier_key(), "").split(
+            "."
+        )[0]
         if not old_app_id_prefix:
             old_app_id_prefix = None
             print("Failed to read old app id prefix")
@@ -845,20 +904,19 @@ class Signer:
                 self.mappings[old_app_id_prefix] = self.opts.team_id
 
         if self.opts.prov_file is not None:
-            shutil.copy2(self.opts.prov_file, embedded_prov)
             # This may cause issues with wildcard entitlements, since they are valid in the provisioning
             # profile, but not when applied to a binary. For example:
             #   com.apple.developer.icloud-services = *
             # Ideally, all such cases should be manually replaced.
-            entitlements = dump_prov_entitlements(embedded_prov)
+            entitlements = dump_prov_entitlements(self.opts.prov_file)
 
-            prov_app_id = entitlements["application-identifier"]
+            prov_app_id = entitlements[self.__get_application_identifier_key()]
             component_app_id = f"{self.opts.team_id}.{bundle_id}"
             wildcard_app_id = f"{self.opts.team_id}.*"
 
             # if the prov file has wildcard app id, expand it, or it would be invalid
             if prov_app_id == wildcard_app_id:
-                entitlements["application-identifier"] = component_app_id
+                entitlements[self.__get_application_identifier_key()] = component_app_id
             elif prov_app_id != component_app_id:
                 print(
                     f"WARNING: Provisioning profile's app id '{prov_app_id}' does not match component's app id '{component_app_id}'.",
@@ -866,15 +924,19 @@ class Signer:
                     sep="\n",
                 )
 
+            keychain: Optional[List[str]] = entitlements.get("keychain-access-groups", None)
+            old_keychain: Optional[List[str]] = old_entitlements.get("keychain-access-groups", None)
+            if old_keychain is None:
+                entitlements.pop("keychain-access-groups", None)
             # if the prov file has wildcard keychain group, expand it, or all signed apps will use the same keychain
-            keychain = entitlements.get("keychain-access-groups", [])
-            if any(item == wildcard_app_id for item in keychain):
+            elif keychain and any(item == wildcard_app_id for item in keychain):
                 keychain.clear()
-                for item in old_entitlements.get("keychain-access-groups", []):
+                for item in old_keychain:
                     keychain.append(f"{self.opts.team_id}.{item[item.index('.')+1:]}")
         else:
             supported_entitlements = [
-                "com.apple.developer.default-data-protection",
+                self.__get_application_identifier_key(),
+                "com.apple.developer.team-identifier",
                 "com.apple.developer.healthkit",
                 "com.apple.developer.healthkit.access",
                 "com.apple.developer.homekit",
@@ -883,58 +945,51 @@ class Signer:
                 "inter-app-audio",
                 "get-task-allow",
                 "keychain-access-groups",
+                self.__get_aps_environment_key(),
+                "com.apple.developer.icloud-container-development-container-identifiers",
+                "com.apple.developer.icloud-container-environment",
+                "com.apple.developer.icloud-container-identifiers",
+                "com.apple.developer.icloud-services",
+                "com.apple.developer.kernel.extended-virtual-addressing",
+                "com.apple.developer.networking.multipath",
+                "com.apple.developer.networking.networkextension",
+                "com.apple.developer.networking.vpn.api",
+                "com.apple.developer.networking.wifi-info",
+                "com.apple.developer.nfc.readersession.formats",
+                "com.apple.developer.siri",
+                "com.apple.developer.ubiquity-container-identifiers",
+                "com.apple.developer.ubiquity-kvstore-identifier",
+                "com.apple.developer.associated-domains",
+                # macOS only
+                "com.apple.security.app-sandbox",
+                "com.apple.security.assets.pictures.read-write",
+                "com.apple.security.device.bluetooth",
+                "com.apple.security.device.usb",
+                "com.apple.security.files.user-selected.read-only",
+                "com.apple.security.files.user-selected.read-write",
+                "com.apple.security.network.client",
+                "com.apple.security.network.server",
             ]
-            if not self.opts.is_free_account:
-                supported_entitlements.extend(
-                    [
-                        "aps-environment",
-                        "com.apple.developer.icloud-container-development-container-identifiers",
-                        "com.apple.developer.icloud-container-environment",
-                        "com.apple.developer.icloud-container-identifiers",
-                        "com.apple.developer.icloud-services",
-                        "com.apple.developer.kernel.extended-virtual-addressing",
-                        "com.apple.developer.kernel.increased-memory-limit",
-                        "com.apple.developer.networking.multipath",
-                        "com.apple.developer.networking.networkextension",
-                        "com.apple.developer.networking.vpn.api",
-                        "com.apple.developer.networking.wifi-info",
-                        "com.apple.developer.nfc.readersession.formats",
-                        "com.apple.developer.siri",
-                        "com.apple.developer.ubiquity-container-identifiers",
-                        "com.apple.developer.ubiquity-kvstore-identifier",
-                    ]
-                )
             entitlements = copy.deepcopy(old_entitlements)
             for entitlement in list(entitlements):
                 if entitlement not in supported_entitlements:
                     self.removed_entitlements.add(entitlement)
                     entitlements.pop(entitlement)
 
-            # some apps define iCloud properties but without identifiers
-            # this is pointless, but it also causes modern Xcode to fail - remove them
-            if not any(
-                item
-                in [
-                    "com.apple.developer.icloud-container-identifiers",
-                    "com.apple.developer.ubiquity-container-identifiers",
-                    "com.apple.developer.icloud-container-development-container-identifiers",
-                ]
-                for item in entitlements
-            ):
-                for entitlement in list(entitlements):
-                    if isinstance(entitlement, str) and entitlement.startswith("com.apple.developer.icloud"):
-                        print(f"Removing incorrectly used entitlement {entitlement}")
-                        self.removed_entitlements.add(entitlement)
-                        entitlements.pop(entitlement)
-
-            # make sure the app can be signed in development
+            # make sure environment-sensitive entitlements are set correctly
             for entitlement, value in {
-                "com.apple.developer.icloud-container-environment": "Development",
-                "aps-environment": "development",
-                "get-task-allow": True,
+                "com.apple.developer.icloud-container-environment": "Production"
+                if self.is_distribution
+                else "Development",
+                self.__get_aps_environment_key(): "production" if self.is_distribution else "development",
+                "get-task-allow": False if self.is_distribution else True,
             }.items():
                 if entitlement in entitlements:
                     entitlements[entitlement] = value
+
+            # change identifiers that don't need to be remapped
+            entitlements["com.apple.developer.team-identifier"] = self.opts.team_id
+            entitlements[self.__get_application_identifier_key()] = f"{self.opts.team_id}.{bundle_id}"
 
             # remap any ids in entitlements, will later byte patch them into various files
             if self.opts.encode_ids:
@@ -983,10 +1038,7 @@ class Signer:
                             if not remap_def.is_list:
                                 entitlements[entitlement] = entitlements[entitlement][0]
 
-        with entitlements_plist.open("wb") as f:
-            plist_dump(entitlements, f)
-
-        return ComponentData(old_bundle_id, bundle_id, entitlements_plist, info_plist, embedded_prov)
+        return ComponentData(old_bundle_id, bundle_id, entitlements, info_plist)
 
     def sign(self):
         with tempfile.TemporaryDirectory() as tmpdir_str:
@@ -1008,6 +1060,14 @@ class Signer:
 
             print("Removed entitlements:")
             print_object(list(self.removed_entitlements))
+
+            if self.opts.prov_file is None:
+                print(
+                    "Logging in...",
+                    "If you receive a two-factor authentication (2FA) code, please submit it to the web service.",
+                    sep="\n",
+                )
+                fastlane_auth(self.opts.account_name, self.opts.account_pass)
 
             jobs: Dict[Path, subprocess.Popen[bytes]] = {}
             for component, data in job_defs:
@@ -1091,19 +1151,13 @@ def run():
     prov_profile = Path("prov.mobileprovision")
     account_name_file = Path("account_name.txt")
     account_pass_file = Path("account_pass.txt")
-    is_free_account = False
     bundle_name = Path("bundle_name.txt")
     if account_name_file.is_file() and account_pass_file.is_file():
-        teams = setup_account(account_name_file, account_pass_file)
-        if len(teams) < 1 or teams[0].strip() == "":
-            raise Exception("Unable to read account teams")
-        if len(teams) == 1 and teams[0].endswith("(Personal Team)"):
-            print("Detected free developer account")
-            is_free_account = True
+        print("Using developer account")
     elif prov_profile.is_file():
         print("Using provisioning profile")
     else:
-        raise Exception("Nothing to sign with!")
+        raise Exception("Developer account or provisioning profile required, found none.")
 
     with tempfile.TemporaryDirectory() as temp_dir_str:
         temp_dir = Path(temp_dir_str)
@@ -1121,7 +1175,8 @@ def run():
                 temp_dir,
                 common_name,
                 team_id,
-                is_free_account,
+                read_file(account_name_file) if account_name_file.is_file() else "",
+                read_file(account_pass_file) if account_pass_file.is_file() else "",
                 prov_profile if prov_profile.is_file() else None,
                 "" if "-n" in sign_args else user_bundle_id,
                 read_file(bundle_name) if bundle_name.exists() else None,
@@ -1135,7 +1190,7 @@ def run():
             )
         ).sign()
 
-        print("Packaging signed IPA...")
+        print("Packaging signed app...")
         signed_ipa = Path("signed.ipa")
         archive_zip(temp_dir, signed_ipa)
 
@@ -1176,8 +1231,6 @@ if __name__ == "__main__":
         failed = True
         traceback.print_exc()
     finally:
-        if failed:
-            debug()
         print("Cleaning up...")
         if old_keychain:
             security_set_default_keychain(old_keychain)

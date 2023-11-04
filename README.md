@@ -1,6 +1,6 @@
 # SignTools CI
 
-This is a free and simple builder for [SignTools](https://github.com/SignTools/SignTools). It uses a Continous Integration (CI) provider to pull, sign, and upload any iOS apps to your `SignTools`.
+This is a free and simple builder for [SignTools](https://github.com/SignTools/SignTools). It uses a Continuous Integration (CI) provider to pull, sign, and upload any iOS apps to your `SignTools`.
 
 The following providers are supported:
 
@@ -8,6 +8,10 @@ The following providers are supported:
 - [Semaphore CI](https://semaphoreci.com/)
 
 You only need to configure one provider.
+
+## Note on free developer accounts
+
+Starting from SignTools 3.0, free developer accounts are no longer supported. Check out [SignTools](https://github.com/SignTools/SignTools) for more information.
 
 ## Repository setup
 
@@ -23,8 +27,6 @@ Alternatively, you can also manually clone this repo into a new private reposito
 ## Provider setup
 
 You now need to configure a CI provider. **You only need one**:
-
-> ### :warning: Developer accounts are only supported on GitHub Actions for now!
 
 ### GitHub Actions
 
