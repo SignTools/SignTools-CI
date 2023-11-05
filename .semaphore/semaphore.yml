@@ -15,6 +15,9 @@ blocks:
           commands:
             - checkout
             - nvm install 18
+            - cache restore session
             - PYTHONUNBUFFERED=1 ./sign.py
+            - cache delete session
+            - cache store session ~/.fastlane
       secrets:
         - name: ios-signer
