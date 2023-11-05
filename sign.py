@@ -297,6 +297,10 @@ def codesign_async(identity: str, component: Path, entitlements: Optional[Path] 
     return subprocess.Popen([*cmd, str(component)], stdout=PIPE, stderr=PIPE)
 
 
+def clean_dev_portal_name(name: str):
+    return re.sub("[^0-9a-zA-Z]+", " ", name).strip()
+
+
 def fastlane_auth(account_name: str, account_pass: str):
     my_env = os.environ.copy()
     my_env["FASTLANE_USER"] = account_name
@@ -368,7 +372,7 @@ def fastlane_register_app_extras(
             "-g",
             id,
             "-n",
-            id,
+            clean_dev_portal_name(f"ST {id}"),
             env=my_env,
         )
 
@@ -398,7 +402,7 @@ def fastlane_register_app(account_name: str, account_pass: str, bundle_id: str, 
         "--app_identifier",
         bundle_id,
         "--app-name",
-        "ST " + bundle_id.replace(".", " "),
+        clean_dev_portal_name(f"ST {bundle_id}"),
         env=my_env,
     )
 
@@ -497,7 +501,7 @@ def fastlane_get_prov_profile(
             "--app_identifier",
             bundle_id,
             "--provisioning_name",
-            f"ST {bundle_id} {prov_type}",
+            clean_dev_portal_name(f"ST {bundle_id} {prov_type}"),
             "--force",
             "--skip_install",
             "--include_mac_in_profiles",
