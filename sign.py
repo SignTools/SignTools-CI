@@ -402,6 +402,24 @@ def fastlane_register_app(account_name: str, account_pass: str, bundle_id: str, 
         env=my_env,
     )
 
+    supported_services = [
+        "--push-notification",
+        "--health-kit",
+        "--home-kit",
+        "--wireless-accessory",
+        "--inter-app-audio",
+        "--extended-virtual-address-space",
+        "--multipath",
+        "--network-extension",
+        "--personal-vpn",
+        "--access-wifi",
+        "--nfc-tag-reading",
+        "--siri-kit",
+        "--associated-domains",
+        "--icloud",
+        "--app-group",
+    ]
+
     # clear any previous services
     run_process(
         "fastlane",
@@ -410,9 +428,7 @@ def fastlane_register_app(account_name: str, account_pass: str, bundle_id: str, 
         "--skip_itc",
         "--app_identifier",
         bundle_id,
-        "--app-group",
-        "--push-notification",
-        "--icloud",
+        *supported_services,
         env=my_env,
     )
 
