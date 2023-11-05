@@ -365,9 +365,9 @@ def fastlane_register_app_extras(
             "produce",
             extra_type,
             "--skip_itc",
-            "--container_identifier",
+            "-g",
             id,
-            "--container_name",
+            "-n",
             id,
             env=my_env,
         )
