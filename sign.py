@@ -19,7 +19,6 @@ import json
 
 secret_url = os.path.expandvars("$SECRET_URL").strip().rstrip("/")
 secret_key = os.path.expandvars("$SECRET_KEY")
-old_keychain: Optional[str] = None
 StrPath = Union[str, Path]
 
 
@@ -64,21 +63,6 @@ def rand_str(len: int, seed: Any = None):
     if old_state is not None:
         random.setstate(old_state)
     return result
-
-
-def kill_xcode():
-    return run_process("killall", "Xcode", check=False)
-
-
-def open_xcode(project: Optional[Path] = None):
-    if project:
-        return run_process("xed", str(project))
-    else:
-        return run_process("xed")
-
-
-def debug():
-    return run_process("./debug.sh", capture=False)
 
 
 def read_file(file_path: StrPath):
@@ -156,12 +140,6 @@ def curl_with_auth(
         check=check,
         capture=capture,
     )
-
-
-def security_set_default_keychain(keychain: str):
-    old_keychain = decode_clean(run_process("security", "default-keychain").stdout).strip('"')
-    run_process("security", "default-keychain", "-s", keychain)
-    return old_keychain
 
 
 def security_get_keychain_list():
@@ -1248,17 +1226,15 @@ if __name__ == "__main__":
     unsigned_ipa = Path("unsigned.ipa")
     node_download(secret_url + f"/jobs/{job_id}/unsigned", unsigned_ipa, capture=False)
 
+    failed = False
     try:
-        failed = False
         run()
     except:
         failed = True
         traceback.print_exc()
     finally:
         print("Cleaning up...")
-        if old_keychain:
-            security_set_default_keychain(old_keychain)
-            security_remove_keychain(keychain_name)
+        security_remove_keychain(keychain_name)
         if failed:
             curl_with_auth(f"{secret_url}/jobs/{job_id}/fail")
             sys.exit(1)
