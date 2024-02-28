@@ -279,10 +279,11 @@ def clean_dev_portal_name(name: str):
     return re.sub("[^0-9a-zA-Z]+", " ", name).strip()
 
 
-def fastlane_auth(account_name: str, account_pass: str):
+def fastlane_auth(account_name: str, account_pass: str, team_id: str):
     my_env = os.environ.copy()
     my_env["FASTLANE_USER"] = account_name
     my_env["FASTLANE_PASSWORD"] = account_pass
+    my_env["FASTLANE_TEAM_ID"] = team_id
 
     auth_pipe = subprocess.Popen(
         # enable copy to clipboard so we're not interactively prompted
@@ -366,10 +367,13 @@ def fastlane_register_app_extras(
     )
 
 
-def fastlane_register_app(account_name: str, account_pass: str, bundle_id: str, entitlements: Dict[Any, Any]):
+def fastlane_register_app(
+    account_name: str, account_pass: str, team_id: str, bundle_id: str, entitlements: Dict[Any, Any]
+):
     my_env = os.environ.copy()
     my_env["FASTLANE_USER"] = account_name
     my_env["FASTLANE_PASSWORD"] = account_pass
+    my_env["FASTLANE_TEAM_ID"] = team_id
 
     # no-op if already exists
     run_process(
@@ -465,11 +469,12 @@ def fastlane_register_app(account_name: str, account_pass: str, bundle_id: str, 
 
 
 def fastlane_get_prov_profile(
-    account_name: str, account_pass: str, bundle_id: str, prov_type: str, platform: str, out_file: Path
+    account_name: str, account_pass: str, team_id: str, bundle_id: str, prov_type: str, platform: str, out_file: Path
 ):
     my_env = os.environ.copy()
     my_env["FASTLANE_USER"] = account_name
     my_env["FASTLANE_PASSWORD"] = account_pass
+    my_env["FASTLANE_TEAM_ID"] = team_id
 
     with tempfile.TemporaryDirectory() as tmpdir_str:
         run_process(
@@ -833,13 +838,13 @@ class Signer:
             shutil.copy2(self.opts.prov_file, embedded_prov)
         else:
             print("Registering component with Apple...")
-            fastlane_register_app(self.opts.account_name, self.opts.account_pass, data.bundle_id, data.entitlements)
+            fastlane_register_app(self.opts.account_name, self.opts.account_pass, self.opts.team_id, data.bundle_id, data.entitlements)
 
             print("Generating provisioning profile...")
             prov_type = "adhoc" if self.is_distribution else "development"
             platform = "macos" if self.is_mac_app else "ios"
             fastlane_get_prov_profile(
-                self.opts.account_name, self.opts.account_pass, data.bundle_id, prov_type, platform, embedded_prov
+                self.opts.account_name, self.opts.account_pass, self.opts.team_id, data.bundle_id, prov_type, platform, embedded_prov
             )
 
         entitlements_plist = Path(tmpdir).joinpath("entitlements.plist")
@@ -1069,7 +1074,7 @@ class Signer:
                     "If you receive a two-factor authentication (2FA) code, please submit it to the web service.",
                     sep="\n",
                 )
-                fastlane_auth(self.opts.account_name, self.opts.account_pass)
+                fastlane_auth(self.opts.account_name, self.opts.account_pass, self.opts.team_id)
 
             jobs: Dict[Path, subprocess.Popen[bytes]] = {}
             for component, data in job_defs:
