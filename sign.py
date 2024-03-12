@@ -1143,17 +1143,16 @@ def run():
         "Distribution": next((n for n in common_names if "Distribution" in n), None),
     }
 
-    if common_names["Development"] is None:
-        raise Exception("No development certificate found, aborting.")
-
     if common_names["Distribution"] is not None:
         print("Using distribution certificate")
         common_name = common_names["Distribution"]
         if "-d" in sign_args:
             raise Exception("Debugging cannot be enabled on distribution certificate, use development.")
-    else:
+    elif common_names["Development"] is not None:
         print("Using development certificate")
         common_name = common_names["Development"]
+    else:
+        raise Exception("Unrecognized code signing certificate, aborting.")
 
     prov_profile = Path("prov.mobileprovision")
     account_name_file = Path("account_name.txt")
