@@ -16,6 +16,7 @@ import random
 import string
 import tempfile
 import json
+from multiprocessing.pool import ThreadPool
 
 secret_url = os.path.expandvars("$SECRET_URL").strip().rstrip("/")
 secret_key = os.path.expandvars("$SECRET_KEY")
@@ -52,6 +53,14 @@ def run_process(
             )
         ) from e
     return result
+
+
+def run_process_async(
+    *cmd: str,
+    env: Optional[Mapping[str, str]] = None,
+    cwd: Optional[str] = None,
+):
+    return subprocess.Popen(cmd, env=env, cwd=cwd, stdout=PIPE, stderr=PIPE)
 
 
 def rand_str(len: int, seed: Any = None):
@@ -272,7 +281,7 @@ def codesign_async(identity: str, component: Path, entitlements: Optional[Path] 
     cmd = ["codesign", "--continue", "-f", "--no-strict", "-s", identity]
     if entitlements:
         cmd.extend(["--entitlements", str(entitlements)])
-    return subprocess.Popen([*cmd, str(component)], stdout=PIPE, stderr=PIPE)
+    return run_process_async(*cmd, str(component))
 
 
 def clean_dev_portal_name(name: str):
@@ -342,18 +351,27 @@ def fastlane_register_app_extras(
         id if id.startswith(extra_prefix) else extra_prefix + id[id.index(".") + 1 :] for id in matched_ids
     )
 
+    jobs: List[Popen[bytes]] = []
+
     for id in matched_ids:
-        run_process(
-            "fastlane",
-            "produce",
-            extra_type,
-            "--skip_itc",
-            "-g",
-            id,
-            "-n",
-            clean_dev_portal_name(f"ST {id}"),
-            env=my_env,
+        jobs.append(
+            run_process_async(
+                "fastlane",
+                "produce",
+                extra_type,
+                "--skip_itc",
+                "-g",
+                id,
+                "-n",
+                clean_dev_portal_name(f"ST {id}"),
+                env=my_env,
+            )
         )
+
+    for pipe in jobs:
+        if pipe.poll() is None:
+            pipe.wait()
+        popen_check(pipe)
 
     run_process(
         "fastlane",
@@ -464,8 +482,14 @@ def fastlane_register_app(
         env=my_env,
     )
 
-    fastlane_register_app_extras(my_env, bundle_id, "cloud_container", "iCloud.", icloud_entitlements, entitlements)
-    fastlane_register_app_extras(my_env, bundle_id, "group", "group.", group_entitlements, entitlements)
+    app_extras = [("cloud_container", "iCloud."), ("group", "group.")]
+    with ThreadPool(len(app_extras)) as p:
+        p.starmap(
+            lambda extra_type, extra_prefix: fastlane_register_app_extras(
+                my_env, bundle_id, extra_type, extra_prefix, icloud_entitlements, entitlements
+            ),
+            app_extras,
+        )
 
 
 def fastlane_get_prov_profile(
