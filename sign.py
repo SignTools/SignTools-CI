@@ -838,13 +838,21 @@ class Signer:
             shutil.copy2(self.opts.prov_file, embedded_prov)
         else:
             print("Registering component with Apple...")
-            fastlane_register_app(self.opts.account_name, self.opts.account_pass, self.opts.team_id, data.bundle_id, data.entitlements)
+            fastlane_register_app(
+                self.opts.account_name, self.opts.account_pass, self.opts.team_id, data.bundle_id, data.entitlements
+            )
 
             print("Generating provisioning profile...")
             prov_type = "adhoc" if self.is_distribution else "development"
             platform = "macos" if self.is_mac_app else "ios"
             fastlane_get_prov_profile(
-                self.opts.account_name, self.opts.account_pass, self.opts.team_id, data.bundle_id, prov_type, platform, embedded_prov
+                self.opts.account_name,
+                self.opts.account_pass,
+                self.opts.team_id,
+                data.bundle_id,
+                prov_type,
+                platform,
+                embedded_prov,
             )
 
         entitlements_plist = Path(tmpdir).joinpath("entitlements.plist")
@@ -985,9 +993,9 @@ class Signer:
 
             # make sure environment-sensitive entitlements are set correctly
             for entitlement, value in {
-                "com.apple.developer.icloud-container-environment": "Production"
-                if self.is_distribution
-                else "Development",
+                "com.apple.developer.icloud-container-environment": (
+                    "Production" if self.is_distribution else "Development"
+                ),
                 self.__get_aps_environment_key(): "production" if self.is_distribution else "development",
                 "get-task-allow": False if self.is_distribution else True,
             }.items():
