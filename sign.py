@@ -206,6 +206,10 @@ def extract_deb(app_bin_name: str, app_bundle_id: str, archive: Path, dest_dir: 
                         else:
                             shutil.copy2(target, file)
 
+            rootless_dir = temp_dir2 / "var" / "jb"
+            if rootless_dir.is_dir():
+                temp_dir2 = rootless_dir
+
             for glob in [
                 "Library/Application Support/*/*.bundle",
                 "Library/Application Support/*",  # *.bundle, background@2x.png
