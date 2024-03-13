@@ -482,11 +482,11 @@ def fastlane_register_app(
         env=my_env,
     )
 
-    app_extras = [("cloud_container", "iCloud."), ("group", "group.")]
+    app_extras = [("cloud_container", "iCloud.", icloud_entitlements), ("group", "group.", group_entitlements)]
     with ThreadPool(len(app_extras)) as p:
         p.starmap(
-            lambda extra_type, extra_prefix: fastlane_register_app_extras(
-                my_env, bundle_id, extra_type, extra_prefix, icloud_entitlements, entitlements
+            lambda extra_type, extra_prefix, matchable_entitlements: fastlane_register_app_extras(
+                my_env, bundle_id, extra_type, extra_prefix, matchable_entitlements, entitlements
             ),
             app_extras,
         )
