@@ -7,6 +7,7 @@ updates:
     commit-message:
       prefix: "fix"
       include: "scope"
+    open-pull-requests-limit: 20
 
   - package-ecosystem: "github-actions"
     directory: "/"
@@ -15,3 +16,4 @@ updates:
     commit-message:
       prefix: "fix"
       include: "scope"
+    open-pull-requests-limit: 20
