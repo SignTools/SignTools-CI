@@ -16,7 +16,12 @@ blocks:
             - checkout
             - nvm install 20
             - cache restore session
-            - PYTHONUNBUFFERED=1 ./sign.py
+            # remove once bundled fastlane >= 2.225.0
+            - curl https://mise.jdx.dev/mise-latest-macos-x64 > ~/mise
+            - chmod +x ~/mise
+            - ~/mise plugins install https://github.com/mollyIV/asdf-fastlane.git
+            - ~/mise use -g fastlane
+            - PYTHONUNBUFFERED=1 ~/mise exec fastlane -- ./sign.py
             - cache delete session
             - cache store session ~/.fastlane
       secrets:
