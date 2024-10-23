@@ -317,7 +317,9 @@ def fastlane_auth(account_name: str, account_pass: str, team_id: str):
                 print("Logged in!")
                 break
             elif result is not None:
-                raise Exception(f"Error logging in, got result: {result}")
+                stdout, stderr = auth_pipe.communicate()
+                result = {"error_code": result, "stdout": stdout, "stderr": stderr}
+                raise Exception(f"Error logging in: {result}")
 
             account_2fa_file = Path("account_2fa.txt")
             result = curl_with_auth(
