@@ -10,18 +10,39 @@ jobs:
     env:
       SECRET_URL: "${{ secrets.SECRET_URL }}"
       SECRET_KEY: "${{ secrets.SECRET_KEY }}"
+
     steps:
+      # Step 1: Checkout the repository
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Cache
+      # Step 2: Set up Ruby environment for Fastlane
+      - name: Set up Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.x'  # Set the appropriate Ruby version
+
+      # Step 3: Cache Fastlane dependencies
+      - name: Cache Fastlane
         uses: actions/cache@v4
         with:
           path: ~/.fastlane
-          key: session-${{ github.run_id }}
+          key: fastlane-${{ runner.os }}-${{ hashFiles('**/Gemfile.lock') }}
           restore-keys: |
-            session
+            fastlane-${{ runner.os }}-
 
+      # Step 4: Install Bundler and Fastlane
+      - name: Install Bundler and Fastlane
+        run: |
+          gem install bundler
+          gem install fastlane
+          gem cleanup
+
+      # Step 5: Run the Signing Script
       - name: Sign
         run: |
           PYTHONUNBUFFERED=1 ./sign.py
+        env:
+          FASTLANE_USER: ${{ secrets.FASTLANE_USER }}
+          FASTLANE_PASSWORD: ${{ secrets.FASTLANE_PASSWORD }}
+          TEAM_ID: ${{ secrets.TEAM_ID }}
