@@ -33,7 +33,7 @@ new EasyDl(downloadUrl, outputFile, {
     );
   })
   .on("error", function (err) {
-    console.log(err.message);
+    console.log(err);
     exit(3);
   })
   .on("end", function () {
