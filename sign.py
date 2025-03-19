@@ -268,13 +268,14 @@ def get_otool_imports(binary: Path):
     return results
 
 
-def install_name_change(binary: Path, old: Path, new: Path):
-    print("Re-linking", binary, old, new)
-    return run_process("install_name_tool", "-change", str(old), str(new), str(binary))
+def install_name_change(binary: Path, old: Path, new: Path, capture: bool = True):
+    return run_process("install_name_tool", "-change", str(old), str(new), str(binary), capture=capture)
 
 
-def insert_dylib(binary: Path, path: Path):
-    return run_process("./insert_dylib", "--inplace", "--no-strip-codesig", "--all-yes", str(path), str(binary))
+def insert_dylib(binary: Path, path: Path, capture: bool = True):
+    return run_process(
+        "./insert_dylib", "--inplace", "--no-strip-codesig", "--all-yes", str(path), str(binary), capture=capture
+    )
 
 
 def get_binary_map(dir: Path):
@@ -629,7 +630,7 @@ def inject_tweaks(ipa_dir: Path, tweaks_dir: Path):
             ):
                 binary_fixed = base_load_path.joinpath(binary_rel)
                 print("Injecting", binary_path, binary_fixed)
-                insert_dylib(app_bin, binary_fixed)
+                insert_dylib(app_bin, binary_fixed, False)
 
         # detect any references to support libs and install missing files
         for binary_path in binary_map.values():
@@ -657,7 +658,7 @@ def inject_tweaks(ipa_dir: Path, tweaks_dir: Path):
                 if link_name in binary_map:
                     link_fixed = base_load_path.joinpath(binary_map[link_name].relative_to(temp_dir))
                     print("Re-linking", binary_path, link_path, link_fixed)
-                    install_name_change(binary_path, link_path, link_fixed)
+                    install_name_change(binary_path, link_path, link_fixed, False)
 
         for file in safe_glob(temp_dir, "*"):
             move_merge_replace(file, base_dir)
