@@ -533,7 +533,7 @@ def fastlane_get_prov_profile(
 
 def codesign_dump_entitlements(component: Path) -> Dict[Any, Any]:
     entitlements_str = decode_clean(
-        run_process("codesign", "--no-strict", "-d", "--entitlements", ":-", str(component)).stdout
+        run_process("codesign", "--no-strict", "-d", "--entitlements", "-", "--xml", str(component)).stdout
     )
     return plist_loads(entitlements_str)
 
