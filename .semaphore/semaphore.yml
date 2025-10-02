@@ -2,8 +2,8 @@ version: v1.0
 name: CI
 agent:
   machine:
-    type: a1-standard-4
-    os_image: macos-xcode15
+    type: a2-standard-4
+    os_image: macos-xcode26
 execution_time_limit:
   minutes: 30
 
@@ -16,12 +16,7 @@ blocks:
             - checkout
             - nvm install 20
             - cache restore session
-            # remove once bundled fastlane >= 2.225.0
-            - curl https://mise.jdx.dev/mise-latest-macos-x64 > ~/mise
-            - chmod +x ~/mise
-            - ~/mise plugins install https://github.com/mollyIV/asdf-fastlane.git
-            - ~/mise use -g fastlane
-            - PYTHONUNBUFFERED=1 ~/mise exec fastlane -- ./sign.py
+            - PYTHONUNBUFFERED=1 ./sign.py
             - cache delete session
             - cache store session ~/.fastlane
       secrets:
