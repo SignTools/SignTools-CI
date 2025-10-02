@@ -12,7 +12,7 @@ jobs:
       SECRET_KEY: "${{ secrets.SECRET_KEY }}"
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Cache
         uses: actions/cache@v4
