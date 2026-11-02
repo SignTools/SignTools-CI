@@ -151,27 +151,15 @@ def curl_with_auth(
     )
 
 
-def security_get_keychain_list():
-    return map(
-        lambda x: x.strip('"'),
-        decode_clean(run_process("security", "list-keychains", "-d", "user").stdout).split(),
-    )
-
-
 def security_remove_keychain(keychain: str):
-    keychains = security_get_keychain_list()
-    keychains = filter(lambda x: keychain not in x, keychains)
-    run_process("security", "list-keychains", "-d", "user", "-s", *keychains)
     run_process("security", "delete-keychain", keychain)
 
 
 def security_import(cert: Path, cert_pass: str, keychain: str) -> List[str]:
     password = "1234"
-    keychains = [*security_get_keychain_list(), keychain]
     run_process("security", "create-keychain", "-p", password, keychain)
     run_process("security", "unlock-keychain", "-p", password, keychain)
     run_process("security", "set-keychain-settings", keychain)
-    run_process("security", "list-keychains", "-d", "user", "-s", *keychains)
     run_process("security", "import", str(cert), "-P", cert_pass, "-A", "-k", keychain)
     run_process(
         "security",
@@ -282,8 +270,8 @@ def get_binary_map(dir: Path):
     return {file.name: file for file in safe_glob(dir, "**/*") if file_is_type(file, "Mach-O")}
 
 
-def codesign_async(identity: str, component: Path, entitlements: Optional[Path] = None):
-    cmd = ["codesign", "--continue", "-f", "--no-strict", "-s", identity]
+def codesign_async(identity: str, keychain: str, component: Path, entitlements: Optional[Path] = None):
+    cmd = ["codesign", "--continue", "-f", "--no-strict", "-s", identity, "--keychain", keychain]
     if entitlements:
         cmd.extend(["--entitlements", str(entitlements)])
     return run_process_async(*cmd, str(component))
@@ -667,6 +655,7 @@ def inject_tweaks(ipa_dir: Path, tweaks_dir: Path):
 class SignOpts(NamedTuple):
     app_dir: Path
     common_name: str
+    keychain: str
     team_id: str
     account_name: str
     account_pass: str
@@ -812,7 +801,7 @@ class Signer:
     def __sign_secondary(self, component: Path, tmpdir: Path):
         # entitlements of frameworks, etc. don't matter, so leave them (potentially) invalid
         print("Signing with original entitlements")
-        return codesign_async(self.opts.common_name, component)
+        return codesign_async(self.opts.common_name, self.opts.keychain, component)
 
     def __sign_primary(self, component: Path, tmpdir: Path, data: ComponentData):
         info = plist_load(data.info_plist)
@@ -891,7 +880,7 @@ class Signer:
             plist_dump(data.entitlements, f)
 
         print("Signing component...")
-        return codesign_async(self.opts.common_name, component, entitlements_plist)
+        return codesign_async(self.opts.common_name, self.opts.keychain, component, entitlements_plist)
 
     def __prepare_primary(
         self,
@@ -1219,6 +1208,7 @@ def run():
             SignOpts(
                 temp_dir,
                 common_name,
+                keychain_name,
                 team_id,
                 read_file(account_name_file) if account_name_file.is_file() else "",
                 read_file(account_pass_file) if account_pass_file.is_file() else "",
@@ -1263,7 +1253,7 @@ if __name__ == "__main__":
     if user_bundle_id.strip() == "":
         user_bundle_id = None
     team_id = read_file("team_id.txt")
-    keychain_name = "ios-signer-" + rand_str(8)
+    keychain_name = str(Path("ios-signer-" + rand_str(8) + ".keychain-db").resolve())
 
     print("Downloading app...")
     unsigned_ipa = Path("unsigned.ipa")
