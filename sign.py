@@ -40,9 +40,12 @@ def run_process(
     env: Optional[Mapping[str, str]] = None,
     cwd: Optional[str] = None,
     timeout: Optional[float] = None,
+    input: Optional[bytes] = None,
 ):
     try:
-        result = subprocess.run(cmd, capture_output=capture, check=check, env=env, cwd=cwd, timeout=timeout)
+        result = subprocess.run(
+            cmd, capture_output=capture, check=check, env=env, cwd=cwd, timeout=timeout, input=input
+        )
     except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as e:
         raise (
             Exception(
@@ -169,6 +172,14 @@ def security_import(cert: Path, cert_pass: str, keychain: str) -> List[str]:
     )
     identity: str = decode_clean(run_process("security", "find-identity", "-p", "appleID", "-v", keychain).stdout)
     return [line.strip('"') for line in re.findall('".*"', identity)]
+
+
+def security_check_expiry(common_name: str, keychain: str):
+    pem = run_process("security", "find-certificate", "-c", common_name, "-p", keychain).stdout
+    result = run_process("openssl", "x509", "-noout", "-enddate", "-checkend", "0", input=pem, check=False)
+    if result.returncode != 0:
+        end_date = decode_clean(result.stdout).splitlines()[0].removeprefix("notAfter=")
+        raise Exception(f"Code signing certificate '{common_name}' expired on {end_date}, aborting.")
 
 
 def extract_tar(archive: Path, dest_dir: Path):
@@ -1181,6 +1192,7 @@ def run():
         common_name = common_names["Development"]
     else:
         raise Exception("Unrecognized code signing certificate, aborting.")
+    security_check_expiry(common_name, keychain_name)
 
     prov_profile = Path("prov.mobileprovision")
     account_name_file = Path("account_name.txt")
