@@ -154,7 +154,14 @@ def curl_with_auth(
     )
 
 
+def security_get_keychain_list() -> List[str]:
+    out = decode_clean(run_process("security", "list-keychains", "-d", "user").stdout)
+    return [line.strip().strip('"') for line in out.splitlines() if line.strip()]
+
+
 def security_remove_keychain(keychain: str):
+    keychains = [k for k in security_get_keychain_list() if k != keychain]
+    run_process("security", "list-keychains", "-d", "user", "-s", *keychains)
     run_process("security", "delete-keychain", keychain)
 
 
@@ -163,6 +170,8 @@ def security_import(cert: Path, cert_pass: str, keychain: str) -> List[str]:
     run_process("security", "create-keychain", "-p", password, keychain)
     run_process("security", "unlock-keychain", "-p", password, keychain)
     run_process("security", "set-keychain-settings", keychain)
+    # codesign needs the keychain in the search list to reach the private key, even with --keychain
+    run_process("security", "list-keychains", "-d", "user", "-s", *security_get_keychain_list(), keychain)
     run_process("security", "import", str(cert), "-P", cert_pass, "-A", "-k", keychain)
     run_process(
         "security",
