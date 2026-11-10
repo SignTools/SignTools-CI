@@ -12,10 +12,10 @@ jobs:
       SECRET_KEY: "${{ secrets.SECRET_KEY }}"
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Cache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.fastlane
           key: session-${{ github.run_id }}
