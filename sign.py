@@ -742,6 +742,19 @@ class Signer:
     def __get_aps_environment_key(self):
         return "com.apple.developer.aps-environment" if self.is_mac_app else "aps-environment"
 
+    def __check_prov_platform(self, prov: Dict[Any, Any]):
+        if self.__get_application_identifier_key() in prov.get("Entitlements", {}):
+            return
+        app_platform = "a macOS" if self.is_mac_app else "an iOS"
+        prov_name = f" '{prov['Name']}'" if prov.get("Name") else ""
+        prov_platforms = (
+            ", ".join("macOS" if p == "OSX" else p for p in prov.get("Platform", [])) or "another platform"
+        )
+        raise Exception(
+            f"This is {app_platform} app, but the provisioning profile{prov_name} is for {prov_platforms}."
+            f" Sign it with {app_platform} provisioning profile instead."
+        )
+
     def __init__(self, opts: SignOpts):
         self.opts = opts
         main_app = get_main_app_path(opts.app_dir)
@@ -755,6 +768,9 @@ class Signer:
             raise Exception(
                 "Cannot use distribution certificate for macOS as the platform does not support adhoc provisioning profiles."
             )
+
+        if opts.prov_file:
+            self.__check_prov_platform(dump_prov(opts.prov_file))
 
         self.mappings: Dict[str, str] = {}
         self.removed_entitlements = set()
